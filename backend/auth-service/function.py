@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import urllib.request
-from db import init_table, get_user_by_username, create_user, get_all_users, update_user_designation, delete_user
+from db import init_table, get_user_by_username, create_user, get_all_users, update_user_designation, delete_user, get_designation_by_role, get_user_by_id
 from auth import hash_password, verify_password, create_token, verify_token
 
 logger = logging.getLogger()
@@ -30,7 +30,7 @@ PG_CONFIG = (
 if not IS_LOCAL:
     PG_CONFIG += " sslmode=require"
 
-VALID_ROLES = ["admin", "hr_global", "hr_local", "manager", "contributor", "viewer"]
+VALID_ROLES = ["admin", "hr", "manager", "employee"]
 
 _initialized = False
 
@@ -71,12 +71,12 @@ def handler(event=None, context=None):
             else:
                 return response(400, {"error": f"Unknown action: {action}"})
         elif method == "GET":
-            # List users (admin only)
+            # List users (admin/hr only)
             user = authenticate(headers)
             if not user:
                 return response(401, {"error": "Authentication required"})
-            if user["role"] != "admin":
-                return response(403, {"error": "Admin access required"})
+            if user["role"] not in ["admin", "hr"]:
+                return response(403, {"error": "Insufficient permissions"})
             users = get_all_users(PG_CONFIG)
             return response(200, users)
         elif method == "PUT":
@@ -85,9 +85,9 @@ def handler(event=None, context=None):
             user = authenticate(headers)
             if not user:
                 return response(401, {"error": "Authentication required"})
-            if not user or user["role"] != "admin":
-                return response(403, {"error": "Admin access required"})
-            return handle_update_designation(resource_id, body)
+            if user["role"] not in ["admin", "hr"]:
+                return response(403, {"error": "Insufficient permissions"})
+            return handle_update_designation(resource_id, body, user)
         elif method == "DELETE":
             # Self-Deletion Route
             if path.endswith("/me"):
@@ -152,13 +152,13 @@ def handle_register(body):
         "username": body["username"],
         "email": body["email"],
         "password_hash": password_hash,
-        "role": body.get("role", "viewer"),
+        "role": body.get("role", "employee"),
         "location": body.get("location"),
     }
 
     # Only allow admin role assignment if authenticated as admin
-    if user_data["role"] != "viewer":
-        user_data["role"] = "viewer"
+    if user_data["role"] != "employee":
+        user_data["role"] = "employee"
 
     try:
         user = create_user(PG_CONFIG, user_data)
@@ -207,16 +207,48 @@ def handle_verify(headers):
     return response(200, {"user": user})
 
 
-def handle_update_designation(user_id, body):
-    """Update a user's designation (admin only)."""
-    designation_id = body.get("designation_id", "").strip()
-    if not designation_id:
-        return response(400, {"error": "designation_id is required"})
+def handle_update_designation(target_user_id, body, requesting_user):
+    """Update a user's designation enforcing hierarchy rules."""
+    new_role = body.get("role", "").strip()
+    
+    if new_role not in VALID_ROLES:
+        return response(400, {"error": f"Invalid role. Must be one of {VALID_ROLES}"})
 
-    user = update_user_designation(PG_CONFIG, user_id, designation_id)
-    if not user:
-        return response(404, {"error": "User or Designation not found"})
-    return response(200, user)
+    # 1. Get the new designation ID and Level
+    new_designation = get_designation_by_role(PG_CONFIG, new_role)
+    if not new_designation:
+        return response(404, {"error": "Designation not found in database"})
+        
+    # 2. Get Target User's Current Level
+    target_user = get_user_by_id(PG_CONFIG, target_user_id)
+    if not target_user:
+        return response(404, {"error": "Target user not found"})
+        
+    target_current_designation = get_designation_by_role(PG_CONFIG, target_user["role"])
+    target_level = target_current_designation["level"] if target_current_designation else 0
+
+    # 3. Get Requesting User's Level
+    req_designation = get_designation_by_role(PG_CONFIG, requesting_user["role"])
+    req_level = req_designation["level"] if req_designation else 0
+
+    # 4. Enforce HR Logic
+    if requesting_user["role"] == "hr":
+        # NEW: Location Attribute Check
+        if target_user.get("location") != requesting_user.get("location"):
+            return response(403, {"error": "HR domain restriction: You can only modify users within your assigned location."})
+        
+        # HR cannot modify admins or other HR members
+        if target_level >= req_level:
+            return response(403, {"error": "You do not have permission to modify users at or above your level."})
+        # HR cannot promote someone to a level equal to or higher than their own
+        if new_designation["level"] >= req_level:
+            return response(403, {"error": "You cannot promote a user to this level."})
+
+    # 5. Execute Update
+    updated_user = update_user_designation(PG_CONFIG, target_user_id, new_designation["id"])
+    if not updated_user:
+        return response(404, {"error": "Failed to update user designation"})
+    return response(200, updated_user)
 
 
 def handle_delete_user(user_id):

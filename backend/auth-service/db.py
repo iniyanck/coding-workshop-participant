@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS designations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title VARCHAR(100) UNIQUE NOT NULL,
     role_name VARCHAR(20) NOT NULL,
-    color_hex VARCHAR(7) DEFAULT '#808080'
+    color_hex VARCHAR(7) DEFAULT '#808080',
+    level INT DEFAULT 10
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -23,6 +24,8 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255) NOT NULL,
     designation_id UUID REFERENCES designations(id),
     location VARCHAR(200),
+    location_lat DECIMAL(10, 8),
+    location_lng DECIMAL(11, 8),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 """
@@ -53,17 +56,28 @@ def init_table(config):
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(CREATE_TABLE_SQL)
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS location_lat DECIMAL(10, 8);")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS location_lng DECIMAL(11, 8);")
+        cur.execute("ALTER TABLE designations ADD COLUMN IF NOT EXISTS level INT DEFAULT 10;")
         
         # Seed default designations
         cur.execute("SELECT COUNT(*) FROM designations")
         if cur.fetchone()[0] == 0:
             cur.execute("""
-                INSERT INTO designations (title, role_name, color_hex) VALUES 
-                ('System Admin', 'admin', '#D32F2F'),
-                ('Branch HR', 'hr_local', '#1976D2'),
-                ('Team Manager', 'manager', '#388E3C'),
-                ('Staff', 'contributor', '#FBC02D')
+                INSERT INTO designations (title, role_name, color_hex, level) VALUES 
+                ('System Administrator', 'admin', '#D32F2F', 100),
+                ('Human Resources', 'hr', '#1976D2', 70),
+                ('Manager', 'manager', '#388E3C', 50),
+                ('Employee', 'employee', '#FBC02D', 10)
             """)
+        else:
+            # Update levels for existing designations if they were seeded previously
+            cur.execute("UPDATE designations SET level = 100 WHERE role_name = 'admin'")
+            cur.execute("UPDATE designations SET level = 70 WHERE role_name = 'hr'")
+            cur.execute("UPDATE designations SET level = 50 WHERE role_name = 'manager'")
+            cur.execute("UPDATE designations SET level = 10 WHERE role_name = 'employee'")
+            # Also handle the renaming of any leftovers if necessary or just leave it for the user
+            # I'll just ensure levels are set.
         
         # Seed default admin (requires fetching the admin designation ID first)
         cur.execute("SELECT COUNT(*) FROM users")
@@ -78,12 +92,21 @@ def init_table(config):
             )
 
 
+def get_designation_by_role(config, role_name):
+    """Helper to fetch designation details by role name."""
+    conn = get_connection(config)
+    with conn.cursor() as cur:
+        cur.execute("SELECT id, level FROM designations WHERE role_name = %s", (role_name,))
+        row = cur.fetchone()
+        return {"id": str(row[0]), "level": row[1]} if row else None
+
+
 def get_user_by_username(config, username):
     """Retrieve a user by username with designation join."""
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(
-            """SELECT u.id, u.username, u.email, u.password_hash, u.location, u.created_at,
+            """SELECT u.id, u.username, u.email, u.password_hash, u.location, u.location_lat, u.location_lng, u.created_at,
                       d.role_name as role, d.title as designation, d.color_hex
                FROM users u
                LEFT JOIN designations d ON u.designation_id = d.id
@@ -91,7 +114,7 @@ def get_user_by_username(config, username):
             (username,)
         )
         row = cur.fetchone()
-        return row_to_dict(row) if row else None
+        return row_to_dict_joined(row) if row else None
 
 
 def get_user_by_id(config, user_id):
@@ -99,7 +122,7 @@ def get_user_by_id(config, user_id):
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(
-            """SELECT u.id, u.username, u.email, u.password_hash, u.location, u.created_at,
+            """SELECT u.id, u.username, u.email, u.password_hash, u.location, u.location_lat, u.location_lng, u.created_at,
                       d.role_name as role, d.title as designation, d.color_hex
                FROM users u
                LEFT JOIN designations d ON u.designation_id = d.id
@@ -107,7 +130,7 @@ def get_user_by_id(config, user_id):
             (user_id,)
         )
         row = cur.fetchone()
-        return row_to_dict(row) if row else None
+        return row_to_dict_joined(row) if row else None
 
 
 def create_user(config, data):
@@ -115,15 +138,17 @@ def create_user(config, data):
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(
-            """INSERT INTO users (username, email, password_hash, designation_id, location)
-               VALUES (%s, %s, %s, %s, %s)
-               RETURNING id, username, email, password_hash, designation_id, location, created_at""",
+            """INSERT INTO users (username, email, password_hash, designation_id, location, location_lat, location_lng)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)
+               RETURNING id, username, email, password_hash, designation_id, location, location_lat, location_lng, created_at""",
             (
                 data["username"],
                 data["email"],
                 data["password_hash"],
                 data.get("designation_id"),
                 data.get("location"),
+                data.get("location_lat"),
+                data.get("location_lng"),
             ),
         )
         row = cur.fetchone()
@@ -139,14 +164,14 @@ def get_all_users(config):
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(
-            """SELECT u.id, u.username, u.email, u.password_hash, u.location, u.created_at,
+            """SELECT u.id, u.username, u.email, u.password_hash, u.location, u.location_lat, u.location_lng, u.created_at,
                       d.role_name as role, d.title as designation, d.color_hex
                FROM users u
                LEFT JOIN designations d ON u.designation_id = d.id
                ORDER BY u.username"""
         )
         rows = cur.fetchall()
-        users = [row_to_dict(row) for row in rows]
+        users = [row_to_dict_joined(row) for row in rows]
         # Remove password hashes from response
         for user in users:
             user.pop("password_hash", None)
@@ -175,31 +200,37 @@ def delete_user(config, user_id):
         return cur.fetchone() is not None
 
 
-def row_to_dict(row):
-    """Convert a database row tuple to a dictionary."""
+def row_to_dict_joined(row):
+    """Convert a database row tuple (with joined designation info) to a dictionary."""
     if not row:
         return None
-    
-    # Check if this is a joined row (9 elements) or basic row (existing CRUD results)
-    if len(row) >= 9:
-        return {
-            "id": str(row[0]),
-            "username": row[1],
-            "email": row[2],
-            "password_hash": row[3],
-            "location": row[4],
-            "created_at": row[5].isoformat() if row[5] else None,
-            "role": row[6] or "viewer",
-            "designation": row[7],
-            "color_hex": row[8]
-        }
-    
     return {
         "id": str(row[0]),
         "username": row[1],
         "email": row[2],
         "password_hash": row[3],
-        "role": row[4],
+        "location": row[4],
+        "location_lat": float(row[5]) if row[5] is not None else None,
+        "location_lng": float(row[6]) if row[6] is not None else None,
+        "created_at": row[7].isoformat() if row[7] else None,
+        "role": row[8] or "employee",
+        "designation": row[9],
+        "color_hex": row[10]
+    }
+
+
+def row_to_dict(row):
+    """Convert a basic database row tuple to a dictionary."""
+    if not row:
+        return None
+    return {
+        "id": str(row[0]),
+        "username": row[1],
+        "email": row[2],
+        "password_hash": row[3],
+        "designation_id": str(row[4]) if row[4] else None,
         "location": row[5],
-        "created_at": row[6].isoformat() if row[6] else None,
+        "location_lat": float(row[6]) if row[6] is not None else None,
+        "location_lng": float(row[7]) if row[7] is not None else None,
+        "created_at": row[8].isoformat() if row[8] else None,
     }

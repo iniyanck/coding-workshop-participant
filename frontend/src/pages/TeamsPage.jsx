@@ -14,6 +14,9 @@ import teamsService from '../services/teamsService';
 import individualsService from '../services/individualsService';
 import authService from '../services/authService';
 import ConfirmDialog from '../components/ConfirmDialog';
+import TeamMap from '../components/TeamMap';
+import { geocodeLocation } from '../utils/geocode';
+import MapIcon from '@mui/icons-material/Map';
 
 const EMPTY_FORM = { name: '', description: '', location: '', leader_id: '', org_leader_id: '' };
 
@@ -31,6 +34,7 @@ export default function TeamsPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [selectedTeam, setSelectedTeam] = useState(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -79,8 +83,19 @@ export default function TeamsPage() {
     if (!validate()) return;
     setSaving(true);
     try {
+      // Geocode the location if it provided and has changed/is new
+      let lat = null;
+      let lng = null;
+      if (form.location.trim()) {
+        const coords = await geocodeLocation(form.location);
+        lat = coords.lat;
+        lng = coords.lng;
+      }
+
       const data = {
         ...form,
+        location_lat: lat,
+        location_lng: lng,
         leader_id: form.leader_id || null,
         org_leader_id: form.org_leader_id || null,
       };
@@ -174,7 +189,18 @@ export default function TeamsPage() {
                     </TableRow>
                   ) : (
                     filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((team) => (
-                      <TableRow key={team.id} hover sx={{ transition: 'background 0.2s' }}>
+                      <TableRow 
+                        key={team.id} 
+                        hover 
+                        onClick={() => setSelectedTeam(team)}
+                        selected={selectedTeam?.id === team.id}
+                        sx={{ 
+                          transition: 'background 0.2s', 
+                          cursor: 'pointer',
+                          '&.Mui-selected': { bgcolor: 'rgba(102, 126, 234, 0.08)' },
+                          '&.Mui-selected:hover': { bgcolor: 'rgba(102, 126, 234, 0.12)' }
+                        }}
+                      >
                         <TableCell>
                           <Typography variant="subtitle2" fontWeight={600}>{team.name}</Typography>
                         </TableCell>
@@ -206,10 +232,10 @@ export default function TeamsPage() {
                         {(authService.canUpdate() || authService.canDelete()) && (
                           <TableCell align="right">
                             {authService.canUpdate() && (
-                              <Tooltip title="Edit"><IconButton size="small" onClick={() => handleOpen(team)} sx={{ color: '#667eea' }}><EditIcon fontSize="small" /></IconButton></Tooltip>
+                              <Tooltip title="Edit"><IconButton size="small" onClick={(e) => { e.stopPropagation(); handleOpen(team); }} sx={{ color: '#667eea' }}><EditIcon fontSize="small" /></IconButton></Tooltip>
                             )}
                             {authService.canDelete() && (
-                              <Tooltip title="Delete"><IconButton size="small" onClick={() => setDeleteTarget(team.id)} sx={{ color: '#ef4444' }}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+                              <Tooltip title="Delete"><IconButton size="small" onClick={(e) => { e.stopPropagation(); setDeleteTarget(team.id); }} sx={{ color: '#ef4444' }}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
                             )}
                           </TableCell>
                         )}
@@ -225,6 +251,33 @@ export default function TeamsPage() {
           </>
         )}
       </Paper>
+
+      {selectedTeam && (
+        <Paper sx={{ mt: 4, p: 3, borderRadius: 3, animation: 'fadeIn 0.5s ease-out' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <MapIcon sx={{ color: '#667eea' }} /> Team Distribution: {selectedTeam.name}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Visualizing {individuals.filter(i => i.team_id === selectedTeam.id).length} team members
+              </Typography>
+            </Box>
+            <Button size="small" onClick={() => setSelectedTeam(null)} sx={{ textTransform: 'none' }}>Close Map</Button>
+          </Box>
+          <TeamMap 
+            individuals={individuals.filter(i => i.team_id === selectedTeam.id)} 
+            teamInfo={selectedTeam} 
+          />
+        </Paper>
+      )}
+
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 700 }}>{editingId ? 'Edit Team' : 'Add Team'}</DialogTitle>

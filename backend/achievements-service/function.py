@@ -1,7 +1,6 @@
 """
 AWS Lambda handler for Achievements service.
-Provides CRUD operations for managing team achievements.
-Routes: POST/GET/PUT/DELETE /api/achievements-service
+Provides Catalog and Award management.
 """
 
 import json
@@ -9,11 +8,12 @@ import logging
 import os
 from db import (
     init_table,
-    create_achievement,
-    get_all_achievements,
-    get_achievement_by_id,
-    update_achievement,
-    delete_achievement,
+    create_catalog_item,
+    get_all_catalog_items,
+    delete_catalog_item,
+    create_award,
+    get_all_awards,
+    delete_award,
 )
 
 logger = logging.getLogger()
@@ -42,7 +42,7 @@ def _ensure_init():
 
 
 def handler(event=None, context=None):
-    """Lambda handler routing by HTTP method."""
+    """Lambda handler routing for catalog and awards."""
     _ensure_init()
 
     try:
@@ -60,19 +60,21 @@ def handler(event=None, context=None):
         resource_id = extract_id(path)
 
         if method == "POST":
-            return handle_create(body)
+            if path.endswith("/catalog"):
+                return handle_create_catalog(body)
+            elif path.endswith("/award"):
+                return handle_create_award(body)
+            return response(400, {"error": f"Invalid POST path: {path}. Use /catalog or /award."})
         elif method == "GET":
-            if resource_id:
-                return handle_get_one(resource_id)
-            return handle_get_all(query_params)
-        elif method == "PUT":
-            if not resource_id:
-                return response(400, {"error": "ID is required for update"})
-            return handle_update(resource_id, body)
+            if path.endswith("/catalog"):
+                return handle_get_catalog()
+            return handle_get_awards(query_params)
         elif method == "DELETE":
             if not resource_id:
                 return response(400, {"error": "ID is required for delete"})
-            return handle_delete(resource_id)
+            if "/catalog" in path:
+                return handle_delete_catalog(resource_id)
+            return handle_delete_award(resource_id)
         else:
             return response(405, {"error": f"Method {method} not allowed"})
 
@@ -81,67 +83,62 @@ def handler(event=None, context=None):
         return response(500, {"error": "Internal server error", "message": str(e)})
 
 
-def handle_create(body):
-    """Handle POST - create a new achievement."""
-    errors = validate(body)
-    if errors:
-        return response(400, {"error": "Validation failed", "details": errors})
-
-    achievement = create_achievement(PG_CONFIG, body)
-    return response(201, achievement)
+def handle_create_catalog(body):
+    """Handle POST /api/achievements-service/catalog"""
+    if not body.get("title"):
+        return response(400, {"error": "title is required for catalog items"})
+    item = create_catalog_item(PG_CONFIG, body)
+    return response(201, item)
 
 
-def handle_get_all(params):
-    """Handle GET all achievements."""
-    team_id = params.get("team_id")
-    individual_id = params.get("individual_id")
-    achievements = get_all_achievements(PG_CONFIG, team_id=team_id, individual_id=individual_id)
-    return response(200, achievements)
+def handle_get_catalog():
+    """Handle GET /api/achievements-service/catalog"""
+    items = get_all_catalog_items(PG_CONFIG)
+    return response(200, items)
 
 
-def handle_get_one(resource_id):
-    """Handle GET achievement by ID."""
-    achievement = get_achievement_by_id(PG_CONFIG, resource_id)
-    if not achievement:
-        return response(404, {"error": "Achievement not found"})
-    return response(200, achievement)
-
-
-def handle_update(resource_id, body):
-    """Handle PUT - update an achievement."""
-    errors = validate(body)
-    if errors:
-        return response(400, {"error": "Validation failed", "details": errors})
-
-    achievement = update_achievement(PG_CONFIG, resource_id, body)
-    if not achievement:
-        return response(404, {"error": "Achievement not found"})
-    return response(200, achievement)
-
-
-def handle_delete(resource_id):
-    """Handle DELETE - remove an achievement."""
-    deleted = delete_achievement(PG_CONFIG, resource_id)
+def handle_delete_catalog(resource_id):
+    """Handle DELETE /api/achievements-service/catalog/{id}"""
+    deleted = delete_catalog_item(PG_CONFIG, resource_id)
     if not deleted:
-        return response(404, {"error": "Achievement not found"})
+        return response(404, {"error": "Catalog item not found"})
     return response(204, None)
 
 
-def validate(data):
-    """Validate achievement data."""
-    errors = []
-    if not data.get("title", "").strip():
-        errors.append("title is required")
-    if not data.get("achievement_date", "").strip():
-        errors.append("achievement_date is required")
-    return errors
+def handle_create_award(body):
+    """Handle POST /api/achievements-service/award"""
+    if not body.get("catalog_id"):
+        return response(400, {"error": "catalog_id is required for awards"})
+    if not body.get("awarded_date"):
+        return response(400, {"error": "awarded_date is required for awards"})
+    
+    award = create_award(PG_CONFIG, body)
+    return response(201, award)
+
+
+def handle_get_awards(params):
+    """Handle GET /api/achievements-service/award (or default GET)"""
+    team_id = params.get("team_id")
+    individual_id = params.get("individual_id")
+    awards = get_all_awards(PG_CONFIG, team_id=team_id, individual_id=individual_id)
+    return response(200, awards)
+
+
+def handle_delete_award(resource_id):
+    """Handle DELETE /api/achievements-service/award/{id}"""
+    deleted = delete_award(PG_CONFIG, resource_id)
+    if not deleted:
+        return response(404, {"error": "Award not found"})
+    return response(204, None)
 
 
 def extract_id(path):
     """Extract resource ID from URL path."""
     parts = [p for p in path.split("/") if p]
     if len(parts) >= 3 and parts[0] == "api":
-        return parts[2]
+        # Supports /api/achievements-service/catalog/{id} or /api/achievements-service/award/{id}
+        # or just /api/achievements-service/{id}
+        return parts[-1] if len(parts) > 2 else None
     return None
 
 
@@ -162,4 +159,4 @@ def response(status_code, body):
 
 
 if __name__ == "__main__":
-    print(handler({"requestContext": {"http": {"method": "GET"}}, "rawPath": "/api/achievements-service"}, None))
+    print(handler({"requestContext": {"http": {"method": "GET"}}, "rawPath": "/api/achievements-service/catalog"}, None))

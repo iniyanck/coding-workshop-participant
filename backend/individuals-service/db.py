@@ -85,6 +85,33 @@ def link_user_by_email(config, email, user_id):
         return {"id": str(row[0]), "employee_id": row[1]} if row else None
 
 
+def is_in_managers_hierarchy(config, manager_user_id, target_individual_id):
+    """Check if the target individual is within the manager's downstream scope using recursive CTE."""
+    conn = get_connection(config)
+    with conn.cursor() as cur:
+        query = """
+            WITH RECURSIVE org_tree AS (
+                SELECT id
+                FROM teams
+                WHERE leader_id = %s
+                
+                UNION ALL
+                
+                SELECT t.id
+                FROM teams t
+                INNER JOIN org_tree ot ON t.parent_team_id = ot.id
+            )
+            SELECT EXISTS (
+                SELECT 1
+                FROM individuals i
+                INNER JOIN org_tree ot ON i.team_id = ot.id
+                WHERE i.id = %s
+            )
+        """
+        cur.execute(query, (manager_user_id, target_individual_id))
+        return cur.fetchone()[0]
+
+
 def create_individual(config, data):
     """Create a new individual record."""
     conn = get_connection(config)
@@ -108,41 +135,72 @@ def create_individual(config, data):
 
 
 def get_all_individuals(config, team_id=None, user=None):
-    """Retrieve all individuals with RBAC scoping."""
+    """Retrieve all individuals with RBAC scoping and Manager hierarchy."""
     conn = get_connection(config)
-    role = user.get("role") if user else "viewer"
-    location = user.get("location") if user else None
+    role = user.get("role") if user else "employee"
     user_id = user.get("user_id") if user else None
 
     with conn.cursor() as cur:
-        # Note: role/location filtering now conceptually applies to the Auth user,
-        # but since those columns are gone from individuals, we filter by the scoped logic.
-        base_query = """
-            SELECT id, employee_id, email, first_name, last_name, user_id, team_id, is_direct_staff, is_active, created_at, updated_at 
-            FROM individuals 
-            WHERE is_active = true
-        """
         params = []
-
-        if role == "hr_local":
-            # HR Local can only see individuals in their location. 
-            # This requires a hypothetical join with Auth or a location column in individuals.
-            # For now, sticking to the user's snippet where location was on individual.
-            # But since it's removed, we might need to rethink this.
-            # However, I will follow the "Remove email, role, and location" instruction.
-            pass 
-        elif role == "manager":
-            base_query += " AND team_id IN (SELECT id FROM teams WHERE leader_id = %s)"
+        
+        # Base query structure
+        if role == "manager":
+            # RECURSIVE CTE: Gets the manager's team AND all child teams
+            base_query = """
+                WITH RECURSIVE org_tree AS (
+                    SELECT id, name, parent_team_id
+                    FROM teams
+                    WHERE leader_id = %s
+                    
+                    UNION ALL
+                    
+                    SELECT t.id, t.name, t.parent_team_id
+                    FROM teams t
+                    INNER JOIN org_tree ot ON t.parent_team_id = ot.id
+                )
+                SELECT i.id, i.employee_id, i.email, i.first_name, i.last_name, 
+                       i.user_id, i.team_id, i.is_direct_staff, i.is_active, 
+                       i.created_at, i.updated_at,
+                       u.location, u.location_lat, u.location_lng 
+                FROM individuals i
+                LEFT JOIN users u ON i.user_id = u.id
+                INNER JOIN org_tree ot ON i.team_id = ot.id
+                WHERE i.is_active = true
+            """
             params.append(user_id)
+            
+        else:
+            # Standard query for Admin, HR, or Employee
+            base_query = """
+                SELECT i.id, i.employee_id, i.email, i.first_name, i.last_name, 
+                       i.user_id, i.team_id, i.is_direct_staff, i.is_active, 
+                       i.created_at, i.updated_at,
+                       u.location, u.location_lat, u.location_lng 
+                FROM individuals i
+                LEFT JOIN users u ON i.user_id = u.id
+                WHERE i.is_active = true
+            """
 
         if team_id:
-            base_query += " AND team_id = %s"
+            base_query += " AND i.team_id = %s"
             params.append(team_id)
 
-        base_query += " ORDER BY last_name, first_name"
+        base_query += " ORDER BY i.last_name, i.first_name"
+        
         cur.execute(base_query, tuple(params))
         rows = cur.fetchall()
-        return [row_to_dict(row) for row in rows]
+        return [row_to_dict_with_location(row) for row in rows]
+
+
+def row_to_dict_with_location(row):
+    """Convert a joined individual row to a dictionary including location coordinates."""
+    if not row:
+        return None
+    d = row_to_dict(row[:11])
+    d["location"] = row[11]
+    d["location_lat"] = float(row[12]) if row[12] is not None else None
+    d["location_lng"] = float(row[13]) if row[13] is not None else None
+    return d
 
 
 def get_individual_by_id(config, individual_id):

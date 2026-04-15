@@ -9,7 +9,7 @@ import logging
 import os
 import urllib.parse
 import jwt
-from db import init_table, create_individual, get_all_individuals, get_individual_by_id, update_individual, delete_individual, bulk_upsert_individuals, link_user_by_email
+from db import init_table, create_individual, get_all_individuals, get_individual_by_id, update_individual, delete_individual, bulk_upsert_individuals, link_user_by_email, is_in_managers_hierarchy
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -71,7 +71,7 @@ def handler(event=None, context=None):
         elif method == "PUT":
             if not resource_id:
                 return response(400, {"error": "ID is required for update"})
-            return handle_update(resource_id, body)
+            return handle_update(resource_id, body, event)
         elif method == "DELETE":
             if not resource_id:
                 return response(400, {"error": "ID is required for delete"})
@@ -160,8 +160,17 @@ def handle_get_one(resource_id):
     return response(200, individual)
 
 
-def handle_update(resource_id, body):
-    """Handle PUT - update an individual."""
+def handle_update(resource_id, body, event):
+    """Handle PUT - update an individual with RBAC/Hierarchy checks."""
+    user = get_user_from_event(event)
+    if not user:
+        return response(401, {"error": "Unauthorized"})
+
+    if user["role"] == "manager":
+        # Check if the individual is within the manager's downstream scope
+        if not is_in_managers_hierarchy(PG_CONFIG, user["user_id"], resource_id):
+            return response(403, {"error": "Hierarchy restriction: This individual is outside your organization."})
+            
     errors = validate(body)
     if errors:
         return response(400, {"error": "Validation failed", "details": errors})
