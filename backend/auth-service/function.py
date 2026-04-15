@@ -11,7 +11,7 @@ Routes:
 import json
 import logging
 import os
-from db import init_table, get_user_by_username, create_user, get_all_users, update_user_role, delete_user
+from db import init_table, get_user_by_username, create_user, get_all_users, update_user_designation, delete_user
 from auth import hash_password, verify_password, create_token, verify_token
 
 logger = logging.getLogger()
@@ -84,16 +84,22 @@ def handler(event=None, context=None):
             user = authenticate(headers)
             if not user:
                 return response(401, {"error": "Authentication required"})
-            if user["role"] != "admin":
+            if not user or user["role"] != "admin":
                 return response(403, {"error": "Admin access required"})
-            return handle_update_role(resource_id, body)
+            return handle_update_designation(resource_id, body)
         elif method == "DELETE":
+            # Self-Deletion Route
+            if path.endswith("/me"):
+                user = authenticate(headers)
+                if not user:
+                    return response(401, {"error": "Authentication required"})
+                return handle_delete_user(user["user_id"])
+            
+            # Admin Deletion Route
             if not resource_id:
                 return response(400, {"error": "User ID is required"})
             user = authenticate(headers)
-            if not user:
-                return response(401, {"error": "Authentication required"})
-            if user["role"] != "admin":
+            if not user or user["role"] != "admin":
                 return response(403, {"error": "Admin access required"})
             return handle_delete_user(resource_id)
         else:
@@ -181,15 +187,15 @@ def handle_verify(headers):
     return response(200, {"user": user})
 
 
-def handle_update_role(user_id, body):
-    """Update a user's role (admin only)."""
-    new_role = body.get("role", "").strip()
-    if new_role not in VALID_ROLES:
-        return response(400, {"error": f"Invalid role. Must be one of: {', '.join(VALID_ROLES)}"})
+def handle_update_designation(user_id, body):
+    """Update a user's designation (admin only)."""
+    designation_id = body.get("designation_id", "").strip()
+    if not designation_id:
+        return response(400, {"error": "designation_id is required"})
 
-    user = update_user_role(PG_CONFIG, user_id, new_role)
+    user = update_user_designation(PG_CONFIG, user_id, designation_id)
     if not user:
-        return response(404, {"error": "User not found"})
+        return response(404, {"error": "User or Designation not found"})
     return response(200, user)
 
 

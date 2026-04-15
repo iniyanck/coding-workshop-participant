@@ -94,7 +94,8 @@ def handle_create(body):
 def handle_get_all(params):
     """Handle GET all achievements."""
     team_id = params.get("team_id")
-    achievements = get_all_achievements(PG_CONFIG, team_id=team_id)
+    individual_id = params.get("individual_id")
+    achievements = get_all_achievements(PG_CONFIG, team_id=team_id, individual_id=individual_id)
     return response(200, achievements)
 
 

@@ -90,7 +90,7 @@ def handle_create(body):
         return response(201, individual)
     except Exception as e:
         if "unique" in str(e).lower() or "duplicate" in str(e).lower():
-            return response(400, {"error": "An individual with this email already exists"})
+            return response(400, {"error": "An individual for this user already exists"})
         raise
 
 
@@ -152,10 +152,6 @@ def validate(data):
         errors.append("first_name is required")
     if not data.get("last_name", "").strip():
         errors.append("last_name is required")
-    if not data.get("email", "").strip():
-        errors.append("email is required")
-    elif "@" not in data["email"]:
-        errors.append("email format is invalid")
     return errors
 
 
