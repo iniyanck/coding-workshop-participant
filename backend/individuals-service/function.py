@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import urllib.parse
+import jwt
 from db import init_table, create_individual, get_all_individuals, get_individual_by_id, update_individual, delete_individual
 
 logger = logging.getLogger()
@@ -61,7 +62,7 @@ def handler(event=None, context=None):
         elif method == "GET":
             if resource_id:
                 return handle_get_one(resource_id)
-            return handle_get_all(query_params)
+            return handle_get_all(query_params, event)
         elif method == "PUT":
             if not resource_id:
                 return response(400, {"error": "ID is required for update"})
@@ -93,10 +94,26 @@ def handle_create(body):
         raise
 
 
-def handle_get_all(params):
-    """Handle GET all individuals."""
+def get_user_from_event(event):
+    """Extract and decode user from Authorization header."""
+    auth_header = event.get("headers", {}).get("authorization", event.get("headers", {}).get("Authorization", ""))
+    if not auth_header.startswith("Bearer "):
+        return None
+    try:
+        # Secret key should match auth-service
+        return jwt.decode(auth_header[7:], os.getenv("JWT_SECRET", "acme-team-mgmt-secret-key-2026"), algorithms=["HS256"])
+    except:
+        return None
+
+
+def handle_get_all(params, event):
+    """Handle GET all individuals with RBAC scoping."""
+    user = get_user_from_event(event)
+    if not user:
+        return response(401, {"error": "Unauthorized"})
+
     team_id = params.get("team_id")
-    individuals = get_all_individuals(PG_CONFIG, team_id=team_id)
+    individuals = get_all_individuals(PG_CONFIG, team_id=team_id, user=user)
     return response(200, individuals)
 
 

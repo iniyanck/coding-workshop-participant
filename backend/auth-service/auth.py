@@ -45,6 +45,7 @@ def create_token(user_data):
         "username": user_data["username"],
         "email": user_data["email"],
         "role": user_data["role"],
+        "location": user_data.get("location"),
         "iat": int(time.time()),
         "exp": int(time.time()) + JWT_EXPIRATION,
     }

@@ -8,7 +8,7 @@ import {
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
-  Search as SearchIcon, Groups as GroupsIcon,
+  Search as SearchIcon, Groups as GroupsIcon, WarningAmber as WarningAmberIcon,
 } from '@mui/icons-material';
 import teamsService from '../services/teamsService';
 import individualsService from '../services/individualsService';
@@ -184,7 +184,20 @@ export default function TeamsPage() {
                           </Typography>
                         </TableCell>
                         <TableCell><Typography variant="body2" color="text.secondary">{team.location || '—'}</Typography></TableCell>
-                        <TableCell><Typography variant="body2" color="text.secondary">{getPersonName(team.leader_id)}</Typography></TableCell>
+                        <TableCell>
+                          {team.leader_id ? (
+                            <Typography variant="body2" color="text.secondary">{getPersonName(team.leader_id)}</Typography>
+                          ) : (
+                            <Chip 
+                              icon={<WarningAmberIcon />} 
+                              label="No Leader Assigned" 
+                              color="warning" 
+                              size="small" 
+                              variant="outlined" 
+                              sx={{ borderRadius: 1.5 }}
+                            />
+                          )}
+                        </TableCell>
                         <TableCell><Typography variant="body2" color="text.secondary">{getPersonName(team.org_leader_id)}</Typography></TableCell>
                         <TableCell align="center">
                           <Chip label={team.member_count || 0} size="small"

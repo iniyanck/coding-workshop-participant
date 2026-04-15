@@ -40,6 +40,7 @@ def init_table(config):
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(CREATE_TABLE_SQL)
+        cur.execute("ALTER TABLE individuals ADD COLUMN IF NOT EXISTS location VARCHAR(200);")
 
 
 def create_individual(config, data):
@@ -64,21 +65,35 @@ def create_individual(config, data):
         return row_to_dict(row)
 
 
-def get_all_individuals(config, team_id=None):
-    """Retrieve all individuals, optionally filtered by team_id."""
+def get_all_individuals(config, team_id=None, user=None):
+    """Retrieve all individuals with RBAC scoping."""
     conn = get_connection(config)
+    role = user.get("role") if user else "viewer"
+    location = user.get("location") if user else None
+    user_id = user.get("user_id") if user else None
+
     with conn.cursor() as cur:
+        base_query = "SELECT id, first_name, last_name, email, role, location, team_id, is_direct_staff, created_at, updated_at FROM individuals WHERE 1=1"
+        params = []
+
+        # RBAC Application Logic
+        if role == "hr_local":
+            base_query += " AND location = %s"
+            params.append(location)
+        elif role == "manager":
+            # Managers only see individuals in teams they lead
+            base_query += " AND team_id IN (SELECT id FROM teams WHERE leader_id = %s)"
+            params.append(user_id)
+        elif role in ["contributor", "viewer"]:
+            # Regular users might have other restrictions, but for now we follow the user's snippet
+            pass
+
         if team_id:
-            cur.execute(
-                """SELECT id, first_name, last_name, email, role, location, team_id, is_direct_staff, created_at, updated_at
-                   FROM individuals WHERE team_id = %s ORDER BY last_name, first_name""",
-                (team_id,),
-            )
-        else:
-            cur.execute(
-                """SELECT id, first_name, last_name, email, role, location, team_id, is_direct_staff, created_at, updated_at
-                   FROM individuals ORDER BY last_name, first_name"""
-            )
+            base_query += " AND team_id = %s"
+            params.append(team_id)
+
+        base_query += " ORDER BY last_name, first_name"
+        cur.execute(base_query, tuple(params))
         rows = cur.fetchall()
         return [row_to_dict(row) for row in rows]
 

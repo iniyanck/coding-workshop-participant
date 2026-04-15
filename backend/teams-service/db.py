@@ -38,6 +38,7 @@ def init_table(config):
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(CREATE_TABLE_SQL)
+        cur.execute("ALTER TABLE teams ADD COLUMN IF NOT EXISTS location VARCHAR(200);")
 
 
 def create_team(config, data):
@@ -60,22 +61,41 @@ def create_team(config, data):
         return row_to_dict(row)
 
 
-def get_all_teams(config):
-    """Retrieve all teams with member count."""
+def get_all_teams(config, user=None):
+    """Retrieve all teams with member count, filtered by RBAC."""
     conn = get_connection(config)
+    role = user.get("role") if user else "viewer"
+    location = user.get("location") if user else None
+    user_id = user.get("user_id") if user else None
+
     with conn.cursor() as cur:
-        cur.execute(
-            """SELECT t.id, t.name, t.description, t.location, t.leader_id, t.org_leader_id,
-                      t.created_at, t.updated_at,
-                      COALESCE(m.member_count, 0) as member_count
-               FROM teams t
-               LEFT JOIN (
-                   SELECT team_id, COUNT(*) as member_count
-                   FROM individuals
-                   GROUP BY team_id
-               ) m ON t.id = m.team_id
-               ORDER BY t.name"""
-        )
+        base_query = """
+            SELECT t.id, t.name, t.description, t.location, t.leader_id, t.org_leader_id,
+                   t.created_at, t.updated_at,
+                   COALESCE(m.member_count, 0) as member_count
+            FROM teams t
+            LEFT JOIN (
+                SELECT team_id, COUNT(*) as member_count
+                FROM individuals
+                GROUP BY team_id
+            ) m ON t.id = m.team_id
+            WHERE 1=1
+        """
+        params = []
+
+        # RBAC Application Logic
+        if role == "hr_local":
+            base_query += " AND t.location = %s"
+            params.append(location)
+        elif role == "manager":
+            # Managers see teams they lead
+            base_query += " AND t.leader_id = %s"
+            params.append(user_id)
+        elif role in ["contributor", "viewer"]:
+            pass
+
+        base_query += " ORDER BY t.name"
+        cur.execute(base_query, tuple(params))
         rows = cur.fetchall()
         return [row_to_dict_with_count(row) for row in rows]
 

@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(20) DEFAULT 'viewer',
+    location VARCHAR(200),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 """
@@ -45,6 +46,7 @@ def init_table(config):
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(CREATE_TABLE_SQL)
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS location VARCHAR(200);")
         # Seed default admin if no users exist
         cur.execute("SELECT COUNT(*) FROM users")
         count = cur.fetchone()[0]
@@ -68,7 +70,7 @@ def get_user_by_username(config, username):
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id, username, email, password_hash, role, created_at FROM users WHERE username = %s",
+            "SELECT id, username, email, password_hash, role, location, created_at FROM users WHERE username = %s",
             (username,),
         )
         row = cur.fetchone()
@@ -80,7 +82,7 @@ def get_user_by_id(config, user_id):
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id, username, email, password_hash, role, created_at FROM users WHERE id = %s",
+            "SELECT id, username, email, password_hash, role, location, created_at FROM users WHERE id = %s",
             (user_id,),
         )
         row = cur.fetchone()
@@ -92,14 +94,15 @@ def create_user(config, data):
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(
-            """INSERT INTO users (username, email, password_hash, role)
-               VALUES (%s, %s, %s, %s)
-               RETURNING id, username, email, password_hash, role, created_at""",
+            """INSERT INTO users (username, email, password_hash, role, location)
+               VALUES (%s, %s, %s, %s, %s)
+               RETURNING id, username, email, password_hash, role, location, created_at""",
             (
                 data["username"],
                 data["email"],
                 data["password_hash"],
                 data.get("role", "viewer"),
+                data.get("location"),
             ),
         )
         row = cur.fetchone()
@@ -111,7 +114,7 @@ def get_all_users(config):
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id, username, email, password_hash, role, created_at FROM users ORDER BY username"
+            "SELECT id, username, email, password_hash, role, location, created_at FROM users ORDER BY username"
         )
         rows = cur.fetchall()
         users = [row_to_dict(row) for row in rows]
@@ -126,7 +129,7 @@ def update_user_role(config, user_id, role):
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(
-            "UPDATE users SET role = %s WHERE id = %s RETURNING id, username, email, password_hash, role, created_at",
+            "UPDATE users SET role = %s WHERE id = %s RETURNING id, username, email, password_hash, role, location, created_at",
             (role, user_id),
         )
         row = cur.fetchone()
@@ -155,5 +158,6 @@ def row_to_dict(row):
         "email": row[2],
         "password_hash": row[3],
         "role": row[4],
-        "created_at": row[5].isoformat() if row[5] else None,
+        "location": row[5],
+        "created_at": row[6].isoformat() if row[6] else None,
     }

@@ -4,7 +4,7 @@ import {
   TableHead, TableRow, Paper, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, Snackbar, Alert, Chip, CircularProgress,
   FormControl, InputLabel, Select, MenuItem, Switch, FormControlLabel,
-  Tooltip, InputAdornment, TablePagination,
+  Tooltip, InputAdornment, TablePagination, Autocomplete,
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
@@ -34,6 +34,8 @@ export default function IndividualsPage() {
   const [filterTeam, setFilterTeam] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [newTeamDialog, setNewTeamDialog] = useState(false);
+  const [pendingTeamName, setPendingTeamName] = useState('');
 
   useEffect(() => { loadData(); }, []);
 
@@ -106,6 +108,23 @@ export default function IndividualsPage() {
     } catch (err) {
       const msg = err.response?.data?.error || 'Operation failed';
       showSnack(msg, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCreateTeam = async () => {
+    if (!pendingTeamName.trim()) return;
+    setSaving(true);
+    try {
+      const newTeam = await teamsService.create({ name: pendingTeamName });
+      setTeams([...teams, newTeam]);
+      setForm({ ...form, team_id: newTeam.id });
+      setNewTeamDialog(false);
+      setPendingTeamName('');
+      showSnack('Team created successfully');
+    } catch (err) {
+      showSnack(err.response?.data?.error || 'Failed to create team', 'error');
     } finally {
       setSaving(false);
     }
@@ -275,15 +294,25 @@ export default function IndividualsPage() {
               sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
             />
           </Box>
-          <FormControl fullWidth sx={{ mt: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
-            <InputLabel>Team</InputLabel>
-            <Select value={form.team_id} label="Team"
-              onChange={(e) => setForm({ ...form, team_id: e.target.value })}
-            >
-              <MenuItem value="">No Team</MenuItem>
-              {teams.map(t => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            freeSolo
+            options={teams}
+            getOptionLabel={(option) => typeof option === 'string' ? option : option.name || ''}
+            value={teams.find(t => t.id === form.team_id) || null}
+            onChange={(event, newValue) => {
+              if (typeof newValue === 'string') {
+                setPendingTeamName(newValue);
+                setNewTeamDialog(true);
+              } else if (newValue && newValue.id) {
+                setForm({ ...form, team_id: newValue.id });
+              } else {
+                setForm({ ...form, team_id: '' });
+              }
+            }}
+            renderInput={(params) => (
+              <TextField {...params} label="Team" sx={{ mt: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+            )}
+          />
           <FormControlLabel sx={{ mt: 1 }}
             control={<Switch checked={form.is_direct_staff} onChange={(e) => setForm({ ...form, is_direct_staff: e.target.checked })} />}
             label="Direct Staff"
@@ -309,6 +338,28 @@ export default function IndividualsPage() {
           {snack.message}
         </Alert>
       </Snackbar>
+
+      {/* New Team Confirmation Dialog */}
+      <Dialog open={newTeamDialog} onClose={() => setNewTeamDialog(false)} PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700 }}>Create New Team?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            "<strong>{pendingTeamName}</strong>" does not exist. Would you like to create it?
+          </Typography>
+          <TextField fullWidth label="Team Name" value={pendingTeamName} 
+            onChange={(e) => setPendingTeamName(e.target.value)}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setNewTeamDialog(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleCreateTeam} disabled={saving}
+            sx={{ borderRadius: 2, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+          >
+            {saving ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Create Team'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

@@ -36,8 +36,12 @@ export default function LoginPage() {
       }
       navigate('/');
     } catch (err) {
-      const msg = err.response?.data?.error || err.response?.data?.message || 'Something went wrong';
-      setError(msg);
+      if (err.response?.data?.details) {
+        setError(err.response.data.details.join(', '));
+      } else {
+        const msg = err.response?.data?.error || err.response?.data?.message || 'Something went wrong';
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }

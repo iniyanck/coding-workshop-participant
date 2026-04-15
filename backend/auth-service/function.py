@@ -29,7 +29,7 @@ PG_CONFIG = (
 if not IS_LOCAL:
     PG_CONFIG += " sslmode=require"
 
-VALID_ROLES = ["admin", "manager", "contributor", "viewer"]
+VALID_ROLES = ["admin", "hr_global", "hr_local", "manager", "contributor", "viewer"]
 
 _initialized = False
 
@@ -124,6 +124,7 @@ def handle_login(body):
             "username": user["username"],
             "email": user["email"],
             "role": user["role"],
+            "location": user.get("location"),
         },
     })
 
@@ -145,6 +146,7 @@ def handle_register(body):
         "email": body["email"],
         "password_hash": password_hash,
         "role": body.get("role", "viewer"),
+        "location": body.get("location"),
     }
 
     # Only allow admin role assignment if authenticated as admin
@@ -162,6 +164,7 @@ def handle_register(body):
                 "username": user["username"],
                 "email": user["email"],
                 "role": user["role"],
+                "location": user.get("location"),
             },
         })
     except Exception as e:
@@ -214,6 +217,7 @@ def authenticate(headers):
         "username": payload["username"],
         "email": payload["email"],
         "role": payload["role"],
+        "location": payload.get("location"),
     }
 
 

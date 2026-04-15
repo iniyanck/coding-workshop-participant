@@ -7,6 +7,7 @@ Routes: POST/GET/PUT/DELETE /api/teams-service
 import json
 import logging
 import os
+import jwt
 from db import init_table, create_team, get_all_teams, get_team_by_id, update_team, delete_team
 
 logger = logging.getLogger()
@@ -57,7 +58,7 @@ def handler(event=None, context=None):
         elif method == "GET":
             if resource_id:
                 return handle_get_one(resource_id)
-            return handle_get_all()
+            return handle_get_all(event)
         elif method == "PUT":
             if not resource_id:
                 return response(400, {"error": "ID is required for update"})
@@ -84,9 +85,23 @@ def handle_create(body):
     return response(201, team)
 
 
-def handle_get_all():
-    """Handle GET all teams."""
-    teams = get_all_teams(PG_CONFIG)
+def get_user_from_event(event):
+    """Extract and decode user from Authorization header."""
+    auth_header = event.get("headers", {}).get("authorization", event.get("headers", {}).get("Authorization", ""))
+    if not auth_header.startswith("Bearer "):
+        return None
+    try:
+        return jwt.decode(auth_header[7:], os.getenv("JWT_SECRET", "acme-team-mgmt-secret-key-2026"), algorithms=["HS256"])
+    except:
+        return None
+
+
+def handle_get_all(event):
+    """Handle GET all teams with RBAC scoping."""
+    user = get_user_from_event(event)
+    if not user:
+        return response(401, {"error": "Unauthorized"})
+    teams = get_all_teams(PG_CONFIG, user=user)
     return response(200, teams)
 
 
