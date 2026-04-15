@@ -11,6 +11,7 @@ Routes:
 import json
 import logging
 import os
+import urllib.request
 from db import init_table, get_user_by_username, create_user, get_all_users, update_user_designation, delete_user
 from auth import hash_password, verify_password, create_token, verify_token
 
@@ -161,6 +162,25 @@ def handle_register(body):
 
     try:
         user = create_user(PG_CONFIG, user_data)
+        
+        # --- NEW: Trigger Just-In-Time Linking ---
+        try:
+            # Note: In a real AWS environment, you'd use the internal API Gateway URL or service discovery.
+            # Assuming an internal env variable INDIVIDUALS_SERVICE_URL exists.
+            individuals_url = os.getenv("INDIVIDUALS_SERVICE_URL", "http://localhost:8080/api/individuals-service")
+            req = urllib.request.Request(
+                f"{individuals_url}/link", 
+                data=json.dumps({"email": user["email"], "user_id": user["id"]}).encode('utf-8'),
+                headers={'Content-Type': 'application/json'},
+                method='POST'
+            )
+            urllib.request.urlopen(req, timeout=5)
+            logger.info(f"Successfully triggered JIT link for {user['email']}")
+        except Exception as link_err:
+            # We catch and log this so registration still succeeds even if linking fails
+            logger.error(f"JIT linking failed for {user['email']}: {str(link_err)}")
+        # -----------------------------------------
+
         user.pop("password_hash", None)
         token = create_token(user)
         return response(201, {
@@ -230,18 +250,27 @@ def authenticate(headers):
 def validate_registration(data):
     """Validate registration data."""
     errors = []
-    if not data.get("username", "").strip():
+    
+    username = data.get("username", "").strip()
+    if not username:
         errors.append("username is required")
-    elif len(data["username"]) < 3:
+    elif len(username) < 3:
         errors.append("username must be at least 3 characters")
-    if not data.get("email", "").strip():
+        
+    # --- UPDATED EMAIL VALIDATION ---
+    email = data.get("email", "").strip().lower()
+    if not email:
         errors.append("email is required")
-    elif "@" not in data["email"]:
-        errors.append("email format is invalid")
-    if not data.get("password", "").strip():
+    elif not email.endswith("@acme.com"):
+        errors.append("Registration is restricted to official @acme.com emails")
+    # --------------------------------
+
+    password = data.get("password", "").strip()
+    if not password:
         errors.append("password is required")
-    elif len(data["password"]) < 6:
+    elif len(password) < 6:
         errors.append("password must be at least 6 characters")
+        
     return errors
 
 

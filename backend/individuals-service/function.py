@@ -9,7 +9,7 @@ import logging
 import os
 import urllib.parse
 import jwt
-from db import init_table, create_individual, get_all_individuals, get_individual_by_id, update_individual, delete_individual
+from db import init_table, create_individual, get_all_individuals, get_individual_by_id, update_individual, delete_individual, bulk_upsert_individuals, link_user_by_email
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -58,6 +58,11 @@ def handler(event=None, context=None):
         resource_id = extract_id(path)
 
         if method == "POST":
+            # Check for specific actions in the body or URL
+            if path.endswith("/import"):
+                return handle_bulk_import(body)
+            elif path.endswith("/link"):
+                return handle_jit_link(body)
             return handle_create(body)
         elif method == "GET":
             if resource_id:
@@ -90,8 +95,38 @@ def handle_create(body):
         return response(201, individual)
     except Exception as e:
         if "unique" in str(e).lower() or "duplicate" in str(e).lower():
-            return response(400, {"error": "An individual for this user already exists"})
+            return response(400, {"error": "An individual with this employee_id or email already exists"})
         raise
+
+
+def handle_bulk_import(body):
+    """Handle POST /api/individuals-service/import"""
+    individuals = body.get("individuals", [])
+    if not isinstance(individuals, list) or not individuals:
+        return response(400, {"error": "Invalid payload. Expected a list of individuals."})
+    
+    # In a production app, add validation for required fields (employee_id, first_name, last_name) here.
+    try:
+        bulk_upsert_individuals(PG_CONFIG, individuals)
+        return response(200, {"message": f"Successfully imported/updated {len(individuals)} records."})
+    except Exception as e:
+        logger.error("Import error: %s", str(e))
+        return response(500, {"error": "Failed to process import."})
+
+
+def handle_jit_link(body):
+    """Handle POST /api/individuals-service/link (Internal Call from Auth Service)"""
+    email = body.get("email")
+    user_id = body.get("user_id")
+    
+    if not email or not user_id:
+        return response(400, {"error": "email and user_id are required"})
+
+    result = link_user_by_email(PG_CONFIG, email, user_id)
+    
+    if result:
+        return response(200, {"message": "Account linked successfully", "individual": result})
+    return response(404, {"message": "No unlinked individual found with that email."})
 
 
 def get_user_from_event(event):
@@ -148,6 +183,8 @@ def handle_delete(resource_id):
 def validate(data):
     """Validate individual data."""
     errors = []
+    if not data.get("employee_id", "").strip():
+        errors.append("employee_id is required")
     if not data.get("first_name", "").strip():
         errors.append("first_name is required")
     if not data.get("last_name", "").strip():

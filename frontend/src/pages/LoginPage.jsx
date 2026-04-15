@@ -32,6 +32,13 @@ export default function LoginPage() {
         await authService.login(form.username, form.password);
       } else {
         if (!form.email) { setError('Email is required'); setLoading(false); return; }
+        // --- NEW CLIENT-SIDE VALIDATION ---
+        if (!form.email.toLowerCase().endsWith('@acme.com')) {
+          setError('You must use your official @acme.com email to register.');
+          setLoading(false);
+          return;
+        }
+        // ----------------------------------
         await authService.register(form.username, form.email, form.password);
       }
       navigate('/');

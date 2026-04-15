@@ -14,6 +14,7 @@ import individualsService from '../services/individualsService';
 import teamsService from '../services/teamsService';
 import authService from '../services/authService';
 import ConfirmDialog from '../components/ConfirmDialog';
+import axios from 'axios';
 
 const EMPTY_FORM = {
   first_name: '', last_name: '', email: '', role: '', location: '', team_id: '', is_direct_staff: true,
@@ -30,6 +31,7 @@ export default function IndividualsPage() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
+  const [uploadStatus, setUploadStatus] = useState(null);
   const [search, setSearch] = useState('');
   const [filterTeam, setFilterTeam] = useState('');
   const [page, setPage] = useState(0);
@@ -141,6 +143,48 @@ export default function IndividualsPage() {
     }
   };
 
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      setLoading(true);
+      try {
+        const text = e.target.result;
+        const individuals = parseCSVtoJSON(text);
+        
+        const response = await axios.post(
+          `${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/api/individuals-service/import`,
+          { individuals },
+          { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+        );
+        
+        showSnack(response.data.message || 'Import successful');
+        loadData();
+      } catch (error) {
+        showSnack(error.response?.data?.error || 'Import failed', 'error');
+      } finally {
+        setLoading(false);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const parseCSVtoJSON = (csvText) => {
+    const lines = csvText.split('\n').filter(line => line.trim() !== '');
+    if (lines.length === 0) return [];
+    const headers = lines[0].split(',').map(h => h.trim());
+    
+    return lines.slice(1).map(line => {
+      const values = line.split(',');
+      return headers.reduce((obj, header, index) => {
+        obj[header] = values[index]?.trim();
+        return obj;
+      }, {});
+    });
+  };
+
   const showSnack = (message, severity = 'success') => setSnack({ open: true, message, severity });
   const getTeamName = (teamId) => teams.find(t => t.id === teamId)?.name || '—';
 
@@ -156,14 +200,15 @@ export default function IndividualsPage() {
           </Typography>
         </Box>
         {authService.canCreate() && (
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpen()}
+          <Button variant="contained" component="label" startIcon={<AddIcon />}
             sx={{
               borderRadius: 2, textTransform: 'none', fontWeight: 600, px: 3,
               background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
               boxShadow: '0 4px 14px rgba(102,126,234,0.4)',
             }}
           >
-            Add Individual
+            Bulk Import (CSV)
+            <input type="file" hidden accept=".csv" onChange={handleFileUpload} />
           </Button>
         )}
       </Box>
@@ -233,13 +278,7 @@ export default function IndividualsPage() {
                         </TableCell>
                         {(authService.canUpdate() || authService.canDelete()) && (
                           <TableCell align="right">
-                            {authService.canUpdate() && (
-                              <Tooltip title="Edit">
-                                <IconButton size="small" onClick={() => handleOpen(ind)} sx={{ color: '#667eea' }}>
-                                  <EditIcon fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                            )}
+                            {/* Edit disabled as per Bulk Import requirements */}
                             {authService.canDelete() && (
                               <Tooltip title="Delete">
                                 <IconButton size="small" onClick={() => setDeleteTarget(ind.id)} sx={{ color: '#ef4444' }}>

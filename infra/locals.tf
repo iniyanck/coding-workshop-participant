@@ -86,8 +86,9 @@ locals {
     MONGO_HOST    = data.aws_caller_identity.this.id == "000000000000" ? coalesce(try(trimspace(var.aws_mongo_host), ""), "172.17.0.1") : try(element(aws_docdb_cluster.this.*.endpoint, 0), "")
     MONGO_PORT    = data.aws_caller_identity.this.id == "000000000000" ? "27017" : try(element(aws_docdb_cluster.this.*.port, 0), "")
     MONGO_NAME    = data.aws_caller_identity.this.id == "000000000000" ? "mongo" : try(element(aws_docdb_cluster.this.*.database_name, 0), "")
-    MONGO_USER    = data.aws_caller_identity.this.id == "000000000000" ? "" : try(element(aws_docdb_cluster.this.*.master_username, 0), "")
-    MONGO_PASS    = data.aws_caller_identity.this.id == "000000000000" ? "" : try(element(aws_docdb_cluster.this.*.master_password, 0), "")
+    MONGO_USER              = data.aws_caller_identity.this.id == "000000000000" ? "" : try(element(aws_docdb_cluster.this.*.master_username, 0), "")
+    MONGO_PASS              = data.aws_caller_identity.this.id == "000000000000" ? "" : try(element(aws_docdb_cluster.this.*.master_password, 0), "")
+    INDIVIDUALS_SERVICE_URL = "http://localhost:8080/api/individuals-service"
   }
   iam_arns = [
     format("arn:%s:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole", data.aws_partition.this.partition),
