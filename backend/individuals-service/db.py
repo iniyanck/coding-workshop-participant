@@ -254,6 +254,15 @@ def delete_individual(config, individual_id):
         return cur.fetchone() is not None
 
 
+
+def check_email_exists(config, email):
+    """Check if an email exists in the individuals table (HRIS source of truth)."""
+    conn = get_connection(config)
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM individuals WHERE email = %s LIMIT 1", (email,))
+        return cur.fetchone() is not None
+
+
 def row_to_dict(row):
     """Convert a database row tuple to a dictionary."""
     if not row:

@@ -9,7 +9,7 @@ import logging
 import os
 import urllib.parse
 import jwt
-from db import init_table, create_individual, get_all_individuals, get_individual_by_id, update_individual, delete_individual, bulk_upsert_individuals, link_user_by_email, is_in_managers_hierarchy
+from db import init_table, create_individual, get_all_individuals, get_individual_by_id, update_individual, delete_individual, bulk_upsert_individuals, link_user_by_email, is_in_managers_hierarchy, check_email_exists
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -65,6 +65,8 @@ def handler(event=None, context=None):
                 return handle_jit_link(body)
             return handle_create(body)
         elif method == "GET":
+            if path.endswith("/lookup"):
+                return handle_lookup(query_params)
             if resource_id:
                 return handle_get_one(resource_id)
             return handle_get_all(query_params, event)
@@ -139,6 +141,18 @@ def get_user_from_event(event):
         return jwt.decode(auth_header[7:], os.getenv("JWT_SECRET", "acme-team-mgmt-secret-key-2026"), algorithms=["HS256"])
     except:
         return None
+
+
+def handle_lookup(params):
+    """Handle GET /api/individuals-service/lookup?email=..."""
+    email = params.get("email", "").strip().lower()
+    if not email:
+        return response(400, {"error": "email parameter is required"})
+    
+    exists = check_email_exists(PG_CONFIG, email)
+    if exists:
+        return response(200, {"status": "verified"})
+    return response(404, {"error": "Email not found in employee database"})
 
 
 def handle_get_all(params, event):

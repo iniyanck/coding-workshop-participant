@@ -12,6 +12,8 @@ import json
 import logging
 import os
 import urllib.request
+import urllib.parse
+import urllib.error
 from db import init_table, get_user_by_username, create_user, get_all_users, update_user_designation, delete_user, get_designation_by_role, get_user_by_id
 from auth import hash_password, verify_password, create_token, verify_token
 
@@ -141,6 +143,25 @@ def handle_register(body):
     errors = validate_registration(body)
     if errors:
         return response(400, {"error": "Validation failed", "details": errors})
+
+    # --- NEW: Strict HRIS Email Verification Guardrail ---
+    email = body.get("email", "").strip().lower()
+    individuals_url = os.getenv("INDIVIDUALS_SERVICE_URL", "http://localhost:8080/api/individuals-service")
+    
+    try:
+        # Check if the email exists in the Individuals Service
+        lookup_url = f"{individuals_url}/lookup?email={urllib.parse.quote(email)}"
+        req = urllib.request.Request(lookup_url, method='GET')
+        urllib.request.urlopen(req, timeout=5)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return response(403, {"error": "Registration blocked: Your email is not found in the verified employee database."})
+        logger.error(f"Individuals service lookup failed: {str(e)}")
+        return response(500, {"error": "Unable to verify employee status at this time."})
+    except Exception as e:
+        logger.error(f"Network error during lookup: {str(e)}")
+        return response(500, {"error": "Verification service unreachable."})
+    # -----------------------------------------------------
 
     # Check if username already exists
     existing = get_user_by_username(PG_CONFIG, body["username"])
