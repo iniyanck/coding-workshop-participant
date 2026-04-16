@@ -2,14 +2,20 @@ import os
 import random
 import hashlib
 import secrets
+import json
+import logging
 from psycopg import connect
 
+# Configure logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
 PG_CONFIG = (
-    f"host={os.getenv('POSTGRES_HOST', 'localhost')} "
+    f"host={os.getenv('POSTGRES_HOST')} "
     f"port={os.getenv('POSTGRES_PORT', '5432')} "
-    f"user={os.getenv('POSTGRES_USER', 'postgres')} "
-    f"password={os.getenv('POSTGRES_PASS', 'postgres123')} "
-    f"dbname={os.getenv('POSTGRES_NAME', 'postgres')} "
+    f"user={os.getenv('POSTGRES_USER')} "
+    f"password={os.getenv('POSTGRES_PASS')} "
+    f"dbname={os.getenv('POSTGRES_NAME')} "
     f"connect_timeout=15"
 )
 if "rds.amazonaws.com" in PG_CONFIG:
@@ -23,7 +29,6 @@ def hash_password(password):
 FIRST_NAMES = ["James", "Mary", "Robert", "Patricia", "John", "Jennifer", "Michael", "Linda", "David", "Elizabeth", "William", "Barbara", "Richard", "Susan", "Joseph", "Jessica", "Thomas", "Sarah", "Charles", "Karen", "Christopher", "Nancy", "Daniel", "Lisa", "Matthew", "Betty", "Anthony", "Margaret", "Mark", "Sandra", "Alex", "Morgan", "Elena", "Marcus", "Sarah", "David", "Sam", "Taylor", "Jordan", "Casey"]
 LAST_NAMES = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin", "Lee", "Perez", "Thompson", "White", "Harris", "Sanchez", "Clark", "Ramirez", "Lewis", "Robinson", "Walker", "Young", "Allen", "King", "Wright", "Scott", "Torres", "Nguyen", "Hill", "Flores", "Green", "Adams", "Nelson", "Baker", "Hall", "Rivera", "Campbell", "Mitchell", "Carter", "Roberts", "Mercer", "Chen", "Kim", "Jenkins"]
 
-# Pre-geocoded to prevent the maps from wiping out or rate-limiting
 LOCATIONS = {
     "New York, NY": (40.7128, -74.0060),
     "San Francisco, CA": (37.7749, -122.4194),
@@ -77,18 +82,18 @@ def generate_individuals(count):
     return inds
 
 def run_seed():
-    print("Connecting to database...")
+    logger.info("Connecting to database...")
     try:
         conn = connect(PG_CONFIG, autocommit=True)
     except Exception as e:
-        print(f"FAILED TO CONNECT: {e}")
-        return
+        logger.error(f"FAILED TO CONNECT: {e}")
+        return {"error": str(e)}
 
     with conn.cursor() as cur:
-        print("1. Wiping database clean (Nuclear Option)...")
-        cur.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO postgres; GRANT ALL ON SCHEMA public TO public;")
+        logger.info("1. Wiping database clean (Nuclear Option)...")
+        cur.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO CURRENT_USER; GRANT ALL ON SCHEMA public TO public;")
         
-        print("2. Recreating updated schemas...")
+        logger.info("2. Recreating updated schemas...")
         cur.execute("""
             CREATE TABLE users (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -206,7 +211,7 @@ def run_seed():
             );
         """)
 
-        print("3. Generating Base Individuals (~150)...")
+        logger.info("3. Generating Base Individuals (~150)...")
         raw_inds = generate_individuals(150)
         
         raw_inds[0] = {"employee_id": "EMP-0001", "email": "mchen@acme.com", "first_name": "Marcus", "last_name": "Chen", "is_direct_staff": False, "designation": "VP of Engineering", "location": "San Francisco, CA", "location_lat": 37.7749, "location_lng": -122.4194}
@@ -226,7 +231,7 @@ def run_seed():
             except Exception:
                 pass
 
-        print("4. Creating Users and Linking to Individuals...")
+        logger.info("4. Creating Users and Linking to Individuals...")
         admin_hash = hash_password("admin123")
         cur.execute("INSERT INTO users (username, email, password_hash, role) VALUES ('admin', 'admin@acme.com', %s, 'admin') RETURNING id", (admin_hash,))
         
@@ -249,7 +254,7 @@ def run_seed():
             user_id = cur.fetchone()[0]
             cur.execute("UPDATE individuals SET user_id = %s WHERE id = %s", (user_id, ind_id))
 
-        print("5. Building Team Hierarchy...")
+        logger.info("5. Building Team Hierarchy...")
         cur.execute("INSERT INTO teams (name, unit_type, leader_id) VALUES ('Engineering', 'Division', %s) RETURNING id", (inserted_inds[0][0],))
         eng_div_id = cur.fetchone()[0]
         cur.execute("INSERT INTO teams (name, unit_type, leader_id) VALUES ('Revenue', 'Division', %s) RETURNING id", (inserted_inds[1][0],))
@@ -269,7 +274,7 @@ def run_seed():
 
         team_ids = [eng_div_id, rev_div_id, plat_dept_id, core_team_id, frontend_team_id, ent_sales_team_id, cs_team_id]
 
-        print("6. Assigning Individuals to Teams...")
+        logger.info("6. Assigning Individuals to Teams...")
         cur.execute("UPDATE individuals SET team_id = %s WHERE id = %s", (frontend_team_id, inserted_inds[2][0]))
         for ind in inserted_inds[5:]:
             t_id = random.choice(team_ids)
@@ -279,7 +284,7 @@ def run_seed():
             elif t_id == core_team_id:
                 cur.execute("UPDATE individuals SET designation = 'Backend Engineer' WHERE id = %s", (ind[0],))
 
-        print("7. Populating Skills Catalog & Team Requirements...")
+        logger.info("7. Populating Skills Catalog & Team Requirements...")
         skill_ids = []
         for s in SKILLS_DEF:
             cur.execute("INSERT INTO skills_catalog (name, category, description) VALUES (%s, %s, %s) RETURNING id", s)
@@ -293,7 +298,7 @@ def run_seed():
         react_id = next(s[0] for s in skill_ids if s[1] == "React Development")
         cur.execute("INSERT INTO team_required_skills (team_id, skill_id, required_proficiency) VALUES (%s, %s, 4)", (frontend_team_id, react_id))
 
-        print("8. Generating Individual Skill Assessments (Creating the Gaps)...")
+        logger.info("8. Generating Individual Skill Assessments (Creating the Gaps)...")
         cur.execute("INSERT INTO individual_skills (individual_id, skill_id, proficiency) VALUES (%s, %s, 5)", (inserted_inds[2][0], react_id))
         
         cur.execute("SELECT id FROM individuals WHERE team_id = %s", (ent_sales_team_id,))
@@ -311,7 +316,7 @@ def run_seed():
             except Exception:
                 pass 
 
-        print("9. Creating Achievements & Awards...")
+        logger.info("9. Creating Achievements & Awards...")
         cat_ids = []
         for a in ACHIEVEMENTS_DEF:
             cur.execute("INSERT INTO achievement_catalog (title, description, recurrence, scope) VALUES (%s, %s, %s, %s) RETURNING id", a)
@@ -326,7 +331,7 @@ def run_seed():
             ind_id = random.choice(inserted_inds)[0]
             cur.execute("INSERT INTO achievement_awards (catalog_id, individual_id, awarded_date) VALUES (%s, %s, CURRENT_DATE - %s::int)", (safety_id, ind_id, random.randint(1, 60)))
 
-        print("10. Generating Development Plans...")
+        logger.info("10. Generating Development Plans...")
         cur.execute("INSERT INTO development_plans (individual_id, title, status) VALUES (%s, 'Senior Transition Plan', 'completed') RETURNING id", (inserted_inds[2][0],))
         alex_plan = cur.fetchone()[0]
         cur.execute("INSERT INTO development_plan_items (plan_id, description, status, item_type) VALUES (%s, 'Lead major feature refactor', 'completed', 'project')", (alex_plan,))
@@ -338,8 +343,31 @@ def run_seed():
             cur.execute("INSERT INTO development_plan_items (plan_id, description, status, item_type) VALUES (%s, 'Complete CRM advanced training module', 'not_started', 'training')", (plan_id,))
             cur.execute("INSERT INTO development_plan_items (plan_id, description, status, item_type) VALUES (%s, 'Read Negotiation Tactics book', 'in_progress', 'reading')", (plan_id,))
 
-        print("\n✅ SEEDING COMPLETE!")
-        print("Database has been reset and populated with hundreds of relational records.")
+        logger.info("\n✅ SEEDING COMPLETE!")
+        return {"status": "success", "message": "Database reset and populated with ~150 records."}
 
-if __name__ == "__main__":
-    run_seed()
+def handler(event, context):
+    """Lambda handler for cloud seeding."""
+    try:
+        path = event.get("rawPath", "")
+        if path.endswith("/count"):
+            conn = connect(PG_CONFIG)
+            with conn.cursor() as cur:
+                cur.execute("SELECT count(*) FROM individuals")
+                cnt = cur.fetchone()[0]
+            return {
+                "statusCode": 200,
+                "body": json.dumps({"count": cnt})
+            }
+        
+        result = run_seed()
+        return {
+            "statusCode": 200,
+            "body": json.dumps(result)
+        }
+    except Exception as e:
+        logger.error(f"Handler error: {str(e)}")
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"error": str(e)})
+        }

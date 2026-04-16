@@ -61,7 +61,7 @@ echo "INFO: Environment - $ENVIRONMENT"
 # AWS Deployment Configuration
 if [ "$ENVIRONMENT" = "aws" ]; then
     # Setup participant if config is missing
-    $SCRIPT_DIR/setup-participant.sh
+    [ -f "$ENVIRONMENT_CONFIG" ] || $SCRIPT_DIR/setup-participant.sh
 
     # Load participant-specific configuration if available
     if [ -f "$ENVIRONMENT_CONFIG" ]; then
@@ -149,8 +149,8 @@ if [ ! -f .env ] && [ -f $BUILD_DIR/.env.local ]; then
     mv -f $BUILD_DIR/.env.local $BUILD_DIR/.env
 fi
 
-# Upload built frontend to S3 (with deletion of old files)
-aws s3 sync $BUILD_DIR/ s3://$BUCKET_NAME/ --delete $AWS_ENDPOINT
+# Upload built frontend to S3 (with deletion of old files, but preserving lambdas)
+aws s3 sync $BUILD_DIR/ s3://$BUCKET_NAME/ --delete --exclude 'lambda/*' $AWS_ENDPOINT
 
 # Invalidate CloudFront cache for AWS deployments
 if [ "$ENVIRONMENT" = "aws" ]; then

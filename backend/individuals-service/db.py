@@ -75,8 +75,9 @@ def bulk_upsert_individuals(config, individuals_data):
                        is_direct_staff = EXCLUDED.is_direct_staff,
                        is_active = true,
                        location = EXCLUDED.location,
-                       location_lat = EXCLUDED.location_lat,
-                       location_lng = EXCLUDED.location_lng,
+                       -- SMART COALESCE: Only overwrite if the new data provides lat/lng, OR if the location string changed
+                       location_lat = COALESCE(EXCLUDED.location_lat, CASE WHEN EXCLUDED.location = individuals.location THEN individuals.location_lat ELSE NULL END),
+                       location_lng = COALESCE(EXCLUDED.location_lng, CASE WHEN EXCLUDED.location = individuals.location THEN individuals.location_lng ELSE NULL END),
                        updated_at = CURRENT_TIMESTAMP""",
                 (
                     data["employee_id"],
@@ -92,6 +93,38 @@ def bulk_upsert_individuals(config, individuals_data):
                 )
             )
     return True
+
+# --- NEW WEBHOOK FUNCTIONS ---
+def upsert_single_individual(config, data):
+    """Real-time upsert from HRIS webhook."""
+    conn = get_connection(config)
+    with conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO individuals (employee_id, email, first_name, last_name, designation, is_direct_staff, is_active, location, location_lat, location_lng)
+               VALUES (%s, %s, %s, %s, %s, %s, true, %s, %s, %s)
+               ON CONFLICT (employee_id) DO UPDATE SET
+                   email = EXCLUDED.email,
+                   first_name = EXCLUDED.first_name,
+                   last_name = EXCLUDED.last_name,
+                   designation = EXCLUDED.designation,
+                   is_direct_staff = EXCLUDED.is_direct_staff,
+                   is_active = true,
+                   location = EXCLUDED.location,
+                   location_lat = EXCLUDED.location_lat,
+                   location_lng = EXCLUDED.location_lng,
+                   updated_at = CURRENT_TIMESTAMP""",
+            (
+                data["employee_id"], data.get("email"), data["first_name"], data["last_name"],
+                data.get("designation"), data.get("is_direct_staff", True),
+                data.get("location"), data.get("location_lat"), data.get("location_lng")
+            )
+        )
+
+def deactivate_single_individual(config, employee_id):
+    """Real-time termination/deletion from HRIS webhook."""
+    conn = get_connection(config)
+    with conn.cursor() as cur:
+        cur.execute("UPDATE individuals SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE employee_id = %s", (employee_id,))
 
 def link_user_by_email(config, email, user_id):
     """Attach a user_id to an individual record matching the email."""

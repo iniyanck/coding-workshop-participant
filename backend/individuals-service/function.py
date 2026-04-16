@@ -65,6 +65,8 @@ def handler(event=None, context=None):
                 return handle_jit_link(body)
             elif path.endswith("/sync"):
                 return handle_hris_sync()
+            elif path.endswith("/webhook"):
+                return handle_hris_webhook(body)
             return handle_create(body)
         elif method == "GET":
             if path.endswith("/lookup"):
@@ -150,6 +152,31 @@ def handle_hris_sync():
     except Exception as e:
         logger.error(f"HRIS sync failed: {str(e)}")
         return response(500, {"error": "HRIS sync failed", "message": str(e)})
+
+
+def handle_hris_webhook(body):
+    """Handle POST /api/individuals-service/webhook"""
+    action = body.get("action")
+    
+    if action == "upsert":
+        data = body.get("data", {})
+        if not data.get("employee_id"):
+            return response(400, {"error": "employee_id required"})
+        
+        from db import upsert_single_individual
+        upsert_single_individual(PG_CONFIG, data)
+        return response(200, {"message": "Record successfully synced to application"})
+        
+    elif action == "delete":
+        emp_id = body.get("employee_id")
+        if not emp_id:
+            return response(400, {"error": "employee_id required"})
+            
+        from db import deactivate_single_individual
+        deactivate_single_individual(PG_CONFIG, emp_id)
+        return response(200, {"message": "Record deactivated in application"})
+        
+    return response(400, {"error": "Invalid webhook action"})
 
 
 def get_user_from_event(event):

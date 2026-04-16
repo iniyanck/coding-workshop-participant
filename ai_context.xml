@@ -3941,7 +3941,10 @@ export const geocodeLocation = async (locationString) => {
   const trySearch = async (query) => {
     try {
       const response = await axios.get('https://nominatim.openstreetmap.org/search', {
-        params: { q: query, format: 'json', limit: 1 }
+        params: { q: query, format: 'json', limit: 1 },
+        headers: {
+          'Accept-Language': 'en-US,en;q=0.9',
+        }
       });
       if (response.data && response.data.length > 0) {
         return {
@@ -6193,14 +6196,23 @@ export default function HRISConsolePage() {
     setSyncResult(null);
 
     try {
-      // Intercept and resolve locations into coordinates before syncing with the backend
-      const enrichedData = await Promise.all(hrisData.map(async (emp) => {
+      // Intercept and resolve locations sequentially to respect API rate limits
+      const enrichedData = [];
+      for (let i = 0; i < hrisData.length; i++) {
+        const emp = hrisData[i];
         if (emp.location) {
-            const coords = await geocodeLocation(emp.location);
-            return { ...emp, location_lat: coords.lat, location_lng: coords.lng };
+          const coords = await geocodeLocation(emp.location);
+          enrichedData.push({ ...emp, location_lat: coords.lat, location_lng: coords.lng });
+          
+          // Delay 1.1 seconds between requests (Nominatim limit is 1 req/sec)
+          // We skip the delay on the final iteration to save time
+          if (i < hrisData.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1100));
+          }
+        } else {
+          enrichedData.push(emp);
         }
-        return emp;
-      }));
+      }
 
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
       const response = await axios.post(

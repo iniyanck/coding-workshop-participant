@@ -14,7 +14,7 @@ provider "aws" {
 
 terraform {
   backend "s3" {
-    bucket = "coding-workshop-us-east-1-abcd1234"
+    bucket = "coding-workshop-tfstate-164f729a"
     key    = "terraform/terraform.tfstate"
   }
 
