@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS individuals (
     email VARCHAR(255) UNIQUE,               -- For JIT linking
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100) NOT NULL,
+    designation VARCHAR(100),
     team_id UUID,
     is_direct_staff BOOLEAN DEFAULT true,
     is_active BOOLEAN DEFAULT true,
@@ -41,6 +42,7 @@ def init_table(config):
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(CREATE_TABLE_SQL)
+        cur.execute("ALTER TABLE individuals ADD COLUMN IF NOT EXISTS designation VARCHAR(100);")
 
 
 def bulk_upsert_individuals(config, individuals_data):
@@ -61,12 +63,13 @@ def bulk_upsert_individuals(config, individuals_data):
             
         for data in individuals_data:
             cur.execute(
-                """INSERT INTO individuals (employee_id, email, first_name, last_name, team_id, is_direct_staff, is_active)
-                   VALUES (%s, %s, %s, %s, %s, %s, true)
+                """INSERT INTO individuals (employee_id, email, first_name, last_name, designation, team_id, is_direct_staff, is_active)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, true)
                    ON CONFLICT (employee_id) DO UPDATE SET
                        email = EXCLUDED.email,
                        first_name = EXCLUDED.first_name,
                        last_name = EXCLUDED.last_name,
+                       designation = EXCLUDED.designation,
                        team_id = COALESCE(EXCLUDED.team_id, individuals.team_id),
                        is_direct_staff = EXCLUDED.is_direct_staff,
                        is_active = true,
@@ -76,6 +79,7 @@ def bulk_upsert_individuals(config, individuals_data):
                     data.get("email"),
                     data["first_name"],
                     data["last_name"],
+                    data.get("designation"),
                     data.get("team_id"),
                     data.get("is_direct_staff", True)
                 )
@@ -130,14 +134,15 @@ def create_individual(config, data):
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(
-            """INSERT INTO individuals (employee_id, email, first_name, last_name, user_id, team_id, is_direct_staff)
-               VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """INSERT INTO individuals (employee_id, email, first_name, last_name, designation, user_id, team_id, is_direct_staff)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                RETURNING id, employee_id, email, first_name, last_name, user_id, team_id, is_direct_staff, is_active, created_at, updated_at""",
             (
                 data["employee_id"],
                 data.get("email"),
                 data["first_name"],
                 data["last_name"],
+                data.get("designation"),
                 data.get("user_id"),
                 data.get("team_id"),
                 data.get("is_direct_staff", True),
@@ -174,9 +179,11 @@ def get_all_individuals(config, team_id=None, user=None):
                 SELECT i.id, i.employee_id, i.email, i.first_name, i.last_name, 
                        i.user_id, i.team_id, i.is_direct_staff, i.is_active, 
                        i.created_at, i.updated_at,
-                       u.location, u.location_lat, u.location_lng 
+                       u.location, u.location_lat, u.location_lng,
+                       t.name as team_name, i.designation
                 FROM individuals i
                 LEFT JOIN users u ON i.user_id = u.id
+                LEFT JOIN teams t ON i.team_id = t.id
                 INNER JOIN org_tree ot ON i.team_id = ot.id
                 WHERE i.is_active = true
             """
@@ -188,9 +195,11 @@ def get_all_individuals(config, team_id=None, user=None):
                 SELECT i.id, i.employee_id, i.email, i.first_name, i.last_name, 
                        i.user_id, i.team_id, i.is_direct_staff, i.is_active, 
                        i.created_at, i.updated_at,
-                       u.location, u.location_lat, u.location_lng 
+                       u.location, u.location_lat, u.location_lng,
+                       t.name as team_name, i.designation
                 FROM individuals i
                 LEFT JOIN users u ON i.user_id = u.id
+                LEFT JOIN teams t ON i.team_id = t.id
                 WHERE i.is_active = true
             """
 
@@ -202,17 +211,26 @@ def get_all_individuals(config, team_id=None, user=None):
         
         cur.execute(base_query, tuple(params))
         rows = cur.fetchall()
-        return [row_to_dict_with_location(row) for row in rows]
+        return [row_to_dict_full(row, role) for row in rows]
 
 
-def row_to_dict_with_location(row):
-    """Convert a joined individual row to a dictionary including location coordinates."""
+def row_to_dict_full(row, role):
+    """Convert a joined individual row to a dictionary, conditionally anonymizing based on role."""
     if not row:
         return None
     d = row_to_dict(row[:11])
     d["location"] = row[11]
     d["location_lat"] = float(row[12]) if row[12] is not None else None
     d["location_lng"] = float(row[13]) if row[13] is not None else None
+    d["team_name"] = row[14]
+    d["designation"] = row[15]
+    
+    if role == "employee":
+        d["email"] = "***"
+        d["employee_id"] = "***"
+        d["is_direct_staff"] = "***"
+        d["is_active"] = "***"
+        
     return d
 
 
@@ -235,7 +253,7 @@ def update_individual(config, individual_id, data):
     with conn.cursor() as cur:
         cur.execute(
             """UPDATE individuals
-               SET employee_id = %s, email = %s, first_name = %s, last_name = %s, user_id = %s,
+               SET employee_id = %s, email = %s, first_name = %s, last_name = %s, designation = %s, user_id = %s,
                    team_id = %s, is_direct_staff = %s, updated_at = CURRENT_TIMESTAMP
                WHERE id = %s
                RETURNING id, employee_id, email, first_name, last_name, user_id, team_id, is_direct_staff, is_active, created_at, updated_at""",
@@ -244,6 +262,7 @@ def update_individual(config, individual_id, data):
                 data.get("email"),
                 data["first_name"],
                 data["last_name"],
+                data.get("designation"),
                 data.get("user_id"),
                 data.get("team_id"),
                 data.get("is_direct_staff", True),
@@ -272,8 +291,9 @@ def check_email_exists(config, email):
     """Check if an email exists in the individuals table (HRIS source of truth)."""
     conn = get_connection(config)
     with conn.cursor() as cur:
-        cur.execute("SELECT 1 FROM individuals WHERE email = %s LIMIT 1", (email,))
-        return cur.fetchone() is not None
+        cur.execute("SELECT designation FROM individuals WHERE email = %s LIMIT 1", (email,))
+        row = cur.fetchone()
+        return {"designation": row[0]} if row else None
 
 
 def row_to_dict(row):

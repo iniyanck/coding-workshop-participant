@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Grid, Card, CardContent, Typography, Skeleton, Chip, Avatar, List,
   ListItem, ListItemAvatar, ListItemText, Divider, Paper,
@@ -51,6 +51,8 @@ export default function DashboardPage() {
   const [awards, setAwards] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isNew = searchParams.get('new') === '1';
   const user = authService.getUser();
 
   useEffect(() => {
@@ -100,7 +102,7 @@ export default function DashboardPage() {
     <Box>
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-          Welcome back, {user?.username}
+          {isNew ? 'Welcome' : 'Welcome back'}, {user?.username}
         </Typography>
         <Typography variant="body1" color="text.secondary">
           Here's your team management overview

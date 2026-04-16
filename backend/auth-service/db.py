@@ -236,11 +236,12 @@ def row_to_dict(row):
     }
 
 def check_individual_exists(config, email):
-    """Check if an individual with the given email exists."""
+    """Check if an individual with the given email exists, returning their designation."""
     conn = get_connection(config)
     with conn.cursor() as cur:
-        cur.execute("SELECT id FROM individuals WHERE email = %s AND is_active = true", (email,))
-        return cur.fetchone() is not None
+        cur.execute("SELECT designation FROM individuals WHERE email = %s AND is_active = true", (email,))
+        row = cur.fetchone()
+        return {"designation": row[0]} if row else None
 
 def link_individual_user(config, email, user_id):
     """Link an individual to a newly created user ID."""

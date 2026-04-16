@@ -119,7 +119,9 @@ export default function UsersPage() {
                           }}
                         >
                           {['admin', 'hr', 'manager', 'employee'].map(r => (
-                            <MenuItem key={r} value={r} sx={{ textTransform: 'capitalize' }}>{r}</MenuItem>
+                            <MenuItem key={r} value={r}>
+                              {r === 'hr' ? 'HR' : r.charAt(0).toUpperCase() + r.slice(1)}
+                            </MenuItem>
                           ))}
                         </Select>
                       </FormControl>

@@ -122,8 +122,10 @@ def handle_login(body):
         return response(400, {"error": "Username and password are required"})
 
     user = get_user_by_username(PG_CONFIG, username)
-    if not user or not verify_password(password, user["password_hash"]):
-        return response(401, {"error": "Invalid username or password"})
+    if not user:
+        return response(401, {"error": "No account found with that username"})
+    if not verify_password(password, user["password_hash"]):
+        return response(401, {"error": "Incorrect password"})
 
     token = create_token(user)
     return response(200, {
@@ -152,11 +154,15 @@ def handle_register(body):
             individuals_url = os.getenv("INDIVIDUALS_SERVICE_URL", "http://localhost:8080/api/individuals-service")
             lookup_url = f"{individuals_url}/lookup?email={urllib.parse.quote(email)}"
             req = urllib.request.Request(lookup_url, method='GET')
-            urllib.request.urlopen(req, timeout=5)
+            res = urllib.request.urlopen(req, timeout=5)
+            data = json.loads(res.read())
+            hris_designation = data.get("designation")
         else:
             # Query the database directly since both lambdas share the identical backend DB in the identical private VPC subnet
-            if not check_individual_exists(PG_CONFIG, email):
+            ind = check_individual_exists(PG_CONFIG, email)
+            if not ind:
                 return response(403, {"error": "Registration blocked: Your email is not found in the verified employee database."})
+            hris_designation = ind.get("designation")
     except urllib.error.HTTPError as e:
         if e.code == 404:
             return response(403, {"error": "Registration blocked: Your email is not found in the verified employee database."})
@@ -173,17 +179,22 @@ def handle_register(body):
         return response(400, {"error": "Username already exists"})
 
     password_hash = hash_password(body["password"])
+    
+    # Preemptive role assignment
+    assigned_role = hris_designation if hris_designation in VALID_ROLES else "employee"
+    
+    # If the user provides a role, only allow them to override it if it is safe, otherwise follow HRIS
+    # Actually just force HRIS designation since it's an enterprise system:
+    
     user_data = {
         "username": body["username"],
         "email": body["email"],
         "password_hash": password_hash,
-        "role": body.get("role", "employee"),
+        "role": assigned_role,
         "location": body.get("location"),
     }
 
-    # Only allow admin role assignment if authenticated as admin
-    if user_data["role"] != "employee":
-        user_data["role"] = "employee"
+    # Note: No longer forcing to 'employee' because we use HRIS synced designation.
 
     try:
         user = create_user(PG_CONFIG, user_data)
@@ -221,7 +232,12 @@ def handle_register(body):
             },
         })
     except Exception as e:
-        if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+        err_str = str(e).lower()
+        if "unique" in err_str or "duplicate" in err_str:
+            if "username" in err_str:
+                return response(400, {"error": "The username you entered is already taken"})
+            elif "email" in err_str:
+                return response(400, {"error": "The email you entered is already registered"})
             return response(400, {"error": "Username or email already exists"})
         raise
 

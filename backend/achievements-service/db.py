@@ -120,9 +120,13 @@ def get_all_awards(config, team_id=None, individual_id=None):
     with conn.cursor() as cur:
         query = """
             SELECT a.id, a.catalog_id, a.team_id, a.individual_id, a.awarded_date, a.location, a.created_at,
-                   c.title, c.description, c.recurrence
+                   c.title, c.description, c.recurrence,
+                   t.name as team_name,
+                   i.first_name || ' ' || i.last_name as individual_name
             FROM achievement_awards a
             JOIN achievement_catalog c ON a.catalog_id = c.id
+            LEFT JOIN teams t ON a.team_id = t.id
+            LEFT JOIN individuals i ON a.individual_id = i.id
             WHERE 1=1
         """
         params = []
@@ -179,4 +183,6 @@ def row_to_dict_award_joined(row):
     d["title"] = row[7]
     d["description"] = row[8]
     d["recurrence"] = row[9]
+    d["team_name"] = row[10]
+    d["individual_name"] = row[11]
     return d

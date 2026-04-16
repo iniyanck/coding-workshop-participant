@@ -8,10 +8,14 @@ import {
 } from '@mui/material';
 import {
   Search as SearchIcon, People as PeopleIcon,
-  CloudSync as SyncIcon,
+  CloudSync as SyncIcon, Edit as EditIcon,
 } from '@mui/icons-material';
 import individualsService from '../services/individualsService';
 import teamsService from '../services/teamsService';
+import authService from '../services/authService';
+import {
+  Dialog, DialogTitle, DialogContent, DialogActions, Button as MuiButton
+} from '@mui/material';
 
 export default function IndividualsPage() {
   const [individuals, setIndividuals] = useState([]);
@@ -21,6 +25,11 @@ export default function IndividualsPage() {
   const [filterTeam, setFilterTeam] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  
+  const [editOpen, setEditOpen] = useState(false);
+  const [editInd, setEditInd] = useState(null);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const userRole = authService.getUser()?.role;
 
   useEffect(() => { loadData(); }, []);
 
@@ -46,7 +55,19 @@ export default function IndividualsPage() {
     return matchesSearch && matchesTeam;
   });
 
-  const getTeamName = (teamId) => teams.find(t => t.id === teamId)?.name || '—';
+  const handleSaveTeam = async () => {
+    if (!editInd) return;
+    setSaveLoading(true);
+    try {
+      await individualsService.update(editInd.id, editInd);
+      await loadData();
+      setEditOpen(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaveLoading(false);
+    }
+  };
 
   return (
     <Box>
@@ -109,6 +130,7 @@ export default function IndividualsPage() {
                     <TableCell>Team</TableCell>
                     <TableCell>Staff Type</TableCell>
                     <TableCell>Status</TableCell>
+                    {['admin', 'hr', 'manager'].includes(userRole) && <TableCell align="right">Actions</TableCell>}
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -132,7 +154,7 @@ export default function IndividualsPage() {
                           </Typography>
                         </TableCell>
                         <TableCell><Typography variant="body2" color="text.secondary">{ind.email || '—'}</Typography></TableCell>
-                        <TableCell><Typography variant="body2" color="text.secondary">{getTeamName(ind.team_id)}</Typography></TableCell>
+                        <TableCell><Typography variant="body2" color="text.secondary">{ind.team_name || '—'}</Typography></TableCell>
                         <TableCell>
                           <Chip size="small" label={ind.is_direct_staff ? 'Direct' : 'Non-Direct'}
                             sx={{
@@ -152,6 +174,16 @@ export default function IndividualsPage() {
                             }}
                           />
                         </TableCell>
+                        {['admin', 'hr', 'manager'].includes(userRole) && (
+                          <TableCell align="right">
+                            <MuiButton size="small" variant="outlined" startIcon={<EditIcon />} 
+                              onClick={() => { setEditInd({...ind}); setEditOpen(true); }}
+                              sx={{ borderRadius: 2 }}
+                            >
+                              Team
+                            </MuiButton>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))
                   )}
@@ -164,6 +196,29 @@ export default function IndividualsPage() {
           </>
         )}
       </Paper>
+
+      <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700 }}>Assign Team</DialogTitle>
+        <DialogContent dividers>
+          {editInd && (
+            <FormControl fullWidth sx={{ mt: 1 }}>
+              <InputLabel>Team</InputLabel>
+              <Select value={editInd.team_id || ''} label="Team"
+                onChange={(e) => setEditInd({...editInd, team_id: e.target.value})}
+              >
+                <MenuItem value="">None</MenuItem>
+                {teams.map(t => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
+              </Select>
+            </FormControl>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <MuiButton onClick={() => setEditOpen(false)} disabled={saveLoading}>Cancel</MuiButton>
+          <MuiButton onClick={handleSaveTeam} variant="contained" disabled={saveLoading} sx={{ borderRadius: 2 }}>
+            {saveLoading ? <CircularProgress size={24} /> : 'Save'}
+          </MuiButton>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

@@ -30,6 +30,7 @@ export default function LoginPage() {
     try {
       if (tab === 0) {
         await authService.login(form.username, form.password);
+        navigate('/');
       } else {
         if (!form.email) { setError('Email is required'); setLoading(false); return; }
         // --- NEW CLIENT-SIDE VALIDATION ---
@@ -40,13 +41,13 @@ export default function LoginPage() {
         }
         // ----------------------------------
         await authService.register(form.username, form.email, form.password);
+        navigate('/?new=1');
       }
-      navigate('/');
     } catch (err) {
       if (err.response?.data?.details) {
         setError(err.response.data.details.join(', '));
       } else {
-        const msg = err.response?.data?.error || err.response?.data?.message || 'Something went wrong';
+        const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Something went wrong';
         setError(msg);
       }
     } finally {

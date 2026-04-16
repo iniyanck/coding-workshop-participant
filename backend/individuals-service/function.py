@@ -170,9 +170,9 @@ def handle_lookup(params):
     if not email:
         return response(400, {"error": "email parameter is required"})
     
-    exists = check_email_exists(PG_CONFIG, email)
-    if exists:
-        return response(200, {"status": "verified"})
+    ind = check_email_exists(PG_CONFIG, email)
+    if ind:
+        return response(200, {"status": "verified", "designation": ind.get("designation")})
     return response(404, {"error": "Email not found in employee database"})
 
 

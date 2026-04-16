@@ -81,7 +81,8 @@ function CatalogTab() {
   const scopeColors = {
     'team': { bg: '#dbeafe', color: '#2563eb' },
     'individual': { bg: '#fce7f3', color: '#db2777' },
-    'company': { bg: '#dcfce7', color: '#16a34a' },
+    'department': { bg: '#dcfce7', color: '#16a34a' },
+    'division': { bg: '#fef3c7', color: '#d97706' },
   };
 
   return (
@@ -219,7 +220,8 @@ function CatalogTab() {
                 <MenuItem value="">None</MenuItem>
                 <MenuItem value="individual">Individual</MenuItem>
                 <MenuItem value="team">Team</MenuItem>
-                <MenuItem value="company">Company</MenuItem>
+                <MenuItem value="department">Department</MenuItem>
+                <MenuItem value="division">Division</MenuItem>
               </Select>
             </FormControl>
           </Box>
@@ -336,11 +338,7 @@ function AwardsTab() {
 
   const showSnack = (message, severity = 'success') => setSnack({ open: true, message, severity });
 
-  const getTeamName = (id) => teams.find(t => t.id === id)?.name || '—';
-  const getIndividualName = (id) => {
-    const ind = individuals.find(i => i.id === id);
-    return ind ? `${ind.first_name} ${ind.last_name}` : '—';
-  };
+
 
   return (
     <Box>
@@ -421,12 +419,12 @@ function AwardsTab() {
                         </TableCell>
                         <TableCell>
                           {award.team_id ? (
-                            <Chip label={getTeamName(award.team_id)} size="small" sx={{ borderRadius: 1.5, fontWeight: 500, bgcolor: '#dbeafe', color: '#2563eb' }} />
+                            <Chip label={award.team_name || '—'} size="small" sx={{ borderRadius: 1.5, fontWeight: 500, bgcolor: '#dbeafe', color: '#2563eb' }} />
                           ) : '—'}
                         </TableCell>
                         <TableCell>
                           {award.individual_id ? (
-                            <Chip label={getIndividualName(award.individual_id)} size="small" sx={{ borderRadius: 1.5, fontWeight: 500, bgcolor: '#fce7f3', color: '#db2777' }} />
+                            <Chip label={award.individual_name || '—'} size="small" sx={{ borderRadius: 1.5, fontWeight: 500, bgcolor: '#fce7f3', color: '#db2777' }} />
                           ) : '—'}
                         </TableCell>
                         <TableCell><Typography variant="body2" color="text.secondary">{award.awarded_date}</Typography></TableCell>
@@ -460,7 +458,16 @@ function AwardsTab() {
           <FormControl fullWidth sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
             <InputLabel>Achievement *</InputLabel>
             <Select value={form.catalog_id} label="Achievement *"
-              onChange={(e) => setForm({ ...form, catalog_id: e.target.value })}
+              onChange={(e) => {
+                const newCat = catalog.find(c => c.id === e.target.value);
+                const scope = newCat?.scope;
+                setForm({ 
+                  ...form, 
+                  catalog_id: e.target.value,
+                  team_id: scope === 'individual' ? '' : form.team_id,
+                  individual_id: ['team', 'department', 'division'].includes(scope) ? '' : form.individual_id
+                });
+              }}
               error={!!errors.catalog_id}
             >
               {catalog.map(c => <MenuItem key={c.id} value={c.id}>{c.title}</MenuItem>)}
@@ -474,6 +481,7 @@ function AwardsTab() {
               <Select value={form.team_id} label="Team"
                 onChange={(e) => setForm({ ...form, team_id: e.target.value })}
                 error={!!errors.team_id}
+                disabled={catalog.find(c => c.id === form.catalog_id)?.scope === 'individual'}
               >
                 <MenuItem value="">None</MenuItem>
                 {teams.map(t => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
@@ -483,6 +491,7 @@ function AwardsTab() {
               <InputLabel>Individual</InputLabel>
               <Select value={form.individual_id} label="Individual"
                 onChange={(e) => setForm({ ...form, individual_id: e.target.value })}
+                disabled={['team', 'department', 'division'].includes(catalog.find(c => c.id === form.catalog_id)?.scope)}
               >
                 <MenuItem value="">None</MenuItem>
                 {individuals.map(i => <MenuItem key={i.id} value={i.id}>{i.first_name} {i.last_name}</MenuItem>)}

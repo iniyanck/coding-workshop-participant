@@ -3,7 +3,7 @@ import {
   Box, Button, Typography, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, Snackbar, Alert, Chip, CircularProgress,
-  Tooltip, Divider, Switch, FormControlLabel,
+  Tooltip, Divider, Checkbox, FormControlLabel,
 } from '@mui/material';
 import {
   Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon,
@@ -13,17 +13,17 @@ import {
 import axios from 'axios';
 
 const INITIAL_HRIS_DATA = [
-  { employee_id: 'EMP-001', email: 'admin@acme.com', first_name: 'Admin', last_name: 'User', is_direct_staff: true },
-  { employee_id: 'EMP-002', email: 'jdoe@acme.com', first_name: 'John', last_name: 'Doe', is_direct_staff: true },
-  { employee_id: 'EMP-003', email: 'jsmith@acme.com', first_name: 'Jane', last_name: 'Smith', is_direct_staff: true },
-  { employee_id: 'EMP-004', email: 'mbrown@acme.com', first_name: 'Michael', last_name: 'Brown', is_direct_staff: false },
-  { employee_id: 'EMP-005', email: 'swilson@acme.com', first_name: 'Sarah', last_name: 'Wilson', is_direct_staff: true },
-  { employee_id: 'EMP-006', email: 'dlee@acme.com', first_name: 'David', last_name: 'Lee', is_direct_staff: false },
-  { employee_id: 'EMP-007', email: 'egarcia@acme.com', first_name: 'Emily', last_name: 'Garcia', is_direct_staff: true },
-  { employee_id: 'EMP-008', email: 'rjohnson@acme.com', first_name: 'Robert', last_name: 'Johnson', is_direct_staff: true },
+  { employee_id: 'EMP-001', email: 'admin@acme.com', first_name: 'Admin', last_name: 'User', is_direct_staff: true, designation: 'admin' },
+  { employee_id: 'EMP-002', email: 'jdoe@acme.com', first_name: 'John', last_name: 'Doe', is_direct_staff: true, designation: 'manager' },
+  { employee_id: 'EMP-003', email: 'jsmith@acme.com', first_name: 'Jane', last_name: 'Smith', is_direct_staff: true, designation: 'hr' },
+  { employee_id: 'EMP-004', email: 'mbrown@acme.com', first_name: 'Michael', last_name: 'Brown', is_direct_staff: false, designation: 'employee' },
+  { employee_id: 'EMP-005', email: 'swilson@acme.com', first_name: 'Sarah', last_name: 'Wilson', is_direct_staff: true, designation: 'employee' },
+  { employee_id: 'EMP-006', email: 'dlee@acme.com', first_name: 'David', last_name: 'Lee', is_direct_staff: false, designation: 'employee' },
+  { employee_id: 'EMP-007', email: 'egarcia@acme.com', first_name: 'Emily', last_name: 'Garcia', is_direct_staff: true, designation: 'employee' },
+  { employee_id: 'EMP-008', email: 'rjohnson@acme.com', first_name: 'Robert', last_name: 'Johnson', is_direct_staff: true, designation: 'employee' },
 ];
 
-const EMPTY_FORM = { employee_id: '', email: '', first_name: '', last_name: '', is_direct_staff: true };
+const EMPTY_FORM = { employee_id: '', email: '', first_name: '', last_name: '', is_direct_staff: true, designation: 'employee' };
 
 export default function HRISConsolePage() {
   const [hrisData, setHrisData] = useState(INITIAL_HRIS_DATA);
@@ -211,6 +211,7 @@ export default function HRISConsolePage() {
                 <TableCell>Employee ID</TableCell>
                 <TableCell>Name</TableCell>
                 <TableCell>Email</TableCell>
+                <TableCell>Designation</TableCell>
                 <TableCell>Staff Type</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
@@ -236,6 +237,11 @@ export default function HRISConsolePage() {
                       </Typography>
                     </TableCell>
                     <TableCell><Typography variant="body2" color="text.secondary">{record.email}</Typography></TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {record.designation === 'hr' ? 'HR' : (record.designation || 'employee').charAt(0).toUpperCase() + (record.designation || 'employee').slice(1)}
+                      </Typography>
+                    </TableCell>
                     <TableCell>
                       <Chip size="small" label={record.is_direct_staff ? 'Direct' : 'Non-Direct'}
                         sx={{
@@ -317,9 +323,19 @@ export default function HRISConsolePage() {
             sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
             placeholder="e.g. name@acme.com"
           />
+          <TextField fullWidth select label="Role / Designation" value={form.designation || 'employee'}
+            onChange={(e) => setForm({ ...form, designation: e.target.value })}
+            SelectProps={{ native: true }}
+            sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+          >
+            <option value="employee">Employee</option>
+            <option value="manager">Manager</option>
+            <option value="hr">HR</option>
+            <option value="admin">System Administrator</option>
+          </TextField>
           <FormControlLabel
-            control={<Switch checked={form.is_direct_staff} onChange={(e) => setForm({ ...form, is_direct_staff: e.target.checked })} />}
-            label="Direct Staff"
+            control={<Checkbox checked={!form.is_direct_staff} onChange={(e) => setForm({ ...form, is_direct_staff: !e.target.checked })} />}
+            label="Indirect Staff"
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
