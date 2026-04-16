@@ -3,7 +3,7 @@ import {
   Box, Button, Typography, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, Snackbar, Alert, Chip, CircularProgress,
-  Tooltip, Divider, Checkbox, FormControlLabel, useTheme,
+  Tooltip, Checkbox, FormControlLabel, useTheme,
 } from '@mui/material';
 import {
   Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon,
@@ -11,19 +11,20 @@ import {
   Storage as StorageIcon, PlayArrow as PlayIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
+import { geocodeLocation } from '../utils/geocode';
 
 const INITIAL_HRIS_DATA = [
-  { employee_id: 'EMP-001', email: 'admin@acme.com', first_name: 'Admin', last_name: 'User', is_direct_staff: true, designation: 'Director of IT' },
-  { employee_id: 'EMP-002', email: 'jdoe@acme.com', first_name: 'John', last_name: 'Doe', is_direct_staff: true, designation: 'Engineering Manager' },
-  { employee_id: 'EMP-003', email: 'jsmith@acme.com', first_name: 'Jane', last_name: 'Smith', is_direct_staff: true, designation: 'HR Business Partner' },
-  { employee_id: 'EMP-004', email: 'mbrown@acme.com', first_name: 'Michael', last_name: 'Brown', is_direct_staff: false, designation: 'Software Engineer' },
-  { employee_id: 'EMP-005', email: 'swilson@acme.com', first_name: 'Sarah', last_name: 'Wilson', is_direct_staff: true, designation: 'Product Designer' },
-  { employee_id: 'EMP-006', email: 'dlee@acme.com', first_name: 'David', last_name: 'Lee', is_direct_staff: false, designation: 'Data Analyst' },
-  { employee_id: 'EMP-007', email: 'egarcia@acme.com', first_name: 'Emily', last_name: 'Garcia', is_direct_staff: true, designation: 'Account Executive' },
-  { employee_id: 'EMP-008', email: 'rjohnson@acme.com', first_name: 'Robert', last_name: 'Johnson', is_direct_staff: true, designation: 'Customer Support Lead' },
+  { employee_id: 'EMP-001', email: 'admin@acme.com', first_name: 'Admin', last_name: 'User', is_direct_staff: true, designation: 'Director of IT', location: 'San Francisco, CA' },
+  { employee_id: 'EMP-002', email: 'jdoe@acme.com', first_name: 'John', last_name: 'Doe', is_direct_staff: true, designation: 'Engineering Manager', location: 'New York, NY' },
+  { employee_id: 'EMP-003', email: 'jsmith@acme.com', first_name: 'Jane', last_name: 'Smith', is_direct_staff: true, designation: 'HR Business Partner', location: 'Lodon, UK' }, // Intentional Typo
+  { employee_id: 'EMP-004', email: 'mbrown@acme.com', first_name: 'Michael', last_name: 'Brown', is_direct_staff: false, designation: 'Software Engineer', location: 'Austin, TX' },
+  { employee_id: 'EMP-005', email: 'swilson@acme.com', first_name: 'Sarah', last_name: 'Wilson', is_direct_staff: true, designation: 'Product Designer', location: 'Seatlte, WA' }, // Intentional Typo
+  { employee_id: 'EMP-006', email: 'dlee@acme.com', first_name: 'David', last_name: 'Lee', is_direct_staff: false, designation: 'Data Analyst', location: 'Chicago, IL' },
+  { employee_id: 'EMP-007', email: 'egarcia@acme.com', first_name: 'Emily', last_name: 'Garcia', is_direct_staff: true, designation: 'Account Executive', location: 'Miami, FL' },
+  { employee_id: 'EMP-008', email: 'rjohnson@acme.com', first_name: 'Robert', last_name: 'Johnson', is_direct_staff: true, designation: 'Customer Support Lead', location: 'Toronto, ON' },
 ];
 
-const EMPTY_FORM = { employee_id: '', email: '', first_name: '', last_name: '', is_direct_staff: true, designation: '' };
+const EMPTY_FORM = { employee_id: '', email: '', first_name: '', last_name: '', is_direct_staff: true, designation: '', location: '' };
 
 export default function HRISConsolePage() {
   const theme = useTheme();
@@ -56,7 +57,6 @@ export default function HRISConsolePage() {
     if (!form.last_name.trim()) e.last_name = 'Required';
     if (!form.email.trim()) e.email = 'Required';
     else if (!form.email.includes('@')) e.email = 'Invalid email';
-    // Check for duplicate employee_id
     const dupIndex = hrisData.findIndex(d => d.employee_id === form.employee_id);
     if (dupIndex !== -1 && dupIndex !== editingIndex) e.employee_id = 'Duplicate ID';
     setErrors(e);
@@ -92,12 +92,31 @@ export default function HRISConsolePage() {
     setSyncResult(null);
 
     try {
+      // Intercept and resolve locations sequentially to respect API rate limits
+      const enrichedData = [];
+      for (let i = 0; i < hrisData.length; i++) {
+        const emp = hrisData[i];
+        if (emp.location) {
+          const coords = await geocodeLocation(emp.location);
+          enrichedData.push({ ...emp, location_lat: coords.lat, location_lng: coords.lng });
+          
+          // Delay 1.1 seconds between requests (Nominatim limit is 1 req/sec)
+          // We skip the delay on the final iteration to save time
+          if (i < hrisData.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1100));
+          }
+        } else {
+          enrichedData.push(emp);
+        }
+      }
+
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
       const response = await axios.post(
         `${apiUrl}/api/individuals-service/import`,
-        { individuals: hrisData },
+        { individuals: enrichedData },
         { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
       );
+      
       setSyncResult({
         success: true,
         message: response.data.message || `Successfully synced ${hrisData.length} records`,
@@ -164,14 +183,6 @@ export default function HRISConsolePage() {
                 ? '0 4px 14px rgba(16,185,129,0.4)'
                 : '0 4px 14px rgba(0,0,0,0.4)',
               fontSize: '0.95rem',
-              '&:hover': {
-                background: theme.palette.mode === 'light'
-                  ? 'linear-gradient(135deg, #059669 0%, #047857 100%)'
-                  : 'linear-gradient(135deg, #047857 0%, #064e3b 100%)',
-                boxShadow: theme.palette.mode === 'light'
-                  ? '0 6px 20px rgba(16,185,129,0.5)'
-                  : '0 6px 20px rgba(0,0,0,0.5)',
-              },
             }}
           >
             {syncing ? 'Syncing...' : 'Trigger Sync'}
@@ -339,6 +350,11 @@ export default function HRISConsolePage() {
             onChange={(e) => setForm({ ...form, designation: e.target.value })}
             sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
             placeholder="e.g. Senior Software Engineer"
+          />
+          <TextField fullWidth label="Location (City, Country)" value={form.location || ''}
+            onChange={(e) => setForm({ ...form, location: e.target.value })}
+            sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            placeholder="e.g. San Francisco, CA"
           />
           <FormControlLabel
             control={<Checkbox checked={!form.is_direct_staff} onChange={(e) => setForm({ ...form, is_direct_staff: !e.target.checked })} />}

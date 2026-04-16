@@ -11,19 +11,21 @@ CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS individuals (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID UNIQUE, 
-    employee_id VARCHAR(50) UNIQUE NOT NULL, -- New Anchor
-    email VARCHAR(255) UNIQUE,               -- For JIT linking
+    employee_id VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE,               
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100) NOT NULL,
     designation VARCHAR(100),
     team_id UUID,
     is_direct_staff BOOLEAN DEFAULT true,
     is_active BOOLEAN DEFAULT true,
+    location VARCHAR(200),
+    location_lat DECIMAL(10, 8),
+    location_lng DECIMAL(11, 8),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 """
-
 
 def get_connection(config):
     """Get or create a PostgreSQL connection with connection pooling."""
@@ -36,14 +38,15 @@ def get_connection(config):
         PG_CONN = None
         raise
 
-
 def init_table(config):
     """Create the individuals table if it doesn't exist."""
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(CREATE_TABLE_SQL)
         cur.execute("ALTER TABLE individuals ADD COLUMN IF NOT EXISTS designation VARCHAR(100);")
-
+        cur.execute("ALTER TABLE individuals ADD COLUMN IF NOT EXISTS location VARCHAR(200);")
+        cur.execute("ALTER TABLE individuals ADD COLUMN IF NOT EXISTS location_lat DECIMAL(10, 8);")
+        cur.execute("ALTER TABLE individuals ADD COLUMN IF NOT EXISTS location_lng DECIMAL(11, 8);")
 
 def bulk_upsert_individuals(config, individuals_data):
     """Upsert a list of individuals based on employee_id, and deactivate those not in the list."""
@@ -51,8 +54,6 @@ def bulk_upsert_individuals(config, individuals_data):
     employee_ids = [data["employee_id"] for data in individuals_data if "employee_id" in data]
     
     with conn.cursor() as cur:
-        # Full Sync: Deactivate individuals not in the HRIS payload
-        # Clear their emails to prevent UniqueViolation if emails are reused
         if employee_ids:
             cur.execute(
                 """UPDATE individuals 
@@ -63,8 +64,8 @@ def bulk_upsert_individuals(config, individuals_data):
             
         for data in individuals_data:
             cur.execute(
-                """INSERT INTO individuals (employee_id, email, first_name, last_name, designation, team_id, is_direct_staff, is_active)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, true)
+                """INSERT INTO individuals (employee_id, email, first_name, last_name, designation, team_id, is_direct_staff, is_active, location, location_lat, location_lng)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, true, %s, %s, %s)
                    ON CONFLICT (employee_id) DO UPDATE SET
                        email = EXCLUDED.email,
                        first_name = EXCLUDED.first_name,
@@ -73,6 +74,9 @@ def bulk_upsert_individuals(config, individuals_data):
                        team_id = COALESCE(EXCLUDED.team_id, individuals.team_id),
                        is_direct_staff = EXCLUDED.is_direct_staff,
                        is_active = true,
+                       location = EXCLUDED.location,
+                       location_lat = EXCLUDED.location_lat,
+                       location_lng = EXCLUDED.location_lng,
                        updated_at = CURRENT_TIMESTAMP""",
                 (
                     data["employee_id"],
@@ -81,11 +85,13 @@ def bulk_upsert_individuals(config, individuals_data):
                     data["last_name"],
                     data.get("designation"),
                     data.get("team_id"),
-                    data.get("is_direct_staff", True)
+                    data.get("is_direct_staff", True),
+                    data.get("location"),
+                    data.get("location_lat"),
+                    data.get("location_lng")
                 )
             )
     return True
-
 
 def link_user_by_email(config, email, user_id):
     """Attach a user_id to an individual record matching the email."""
@@ -100,7 +106,6 @@ def link_user_by_email(config, email, user_id):
         )
         row = cur.fetchone()
         return {"id": str(row[0]), "employee_id": row[1]} if row else None
-
 
 def is_in_managers_hierarchy(config, manager_user_id, target_individual_id):
     """Check if the target individual is within the manager's downstream scope using recursive CTE."""
@@ -128,14 +133,13 @@ def is_in_managers_hierarchy(config, manager_user_id, target_individual_id):
         cur.execute(query, (manager_user_id, target_individual_id))
         return cur.fetchone()[0]
 
-
 def create_individual(config, data):
     """Create a new individual record."""
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(
-            """INSERT INTO individuals (employee_id, email, first_name, last_name, designation, user_id, team_id, is_direct_staff)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """INSERT INTO individuals (employee_id, email, first_name, last_name, designation, user_id, team_id, is_direct_staff, location, location_lat, location_lng)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                RETURNING id, employee_id, email, first_name, last_name, user_id, team_id, is_direct_staff, is_active, created_at, updated_at""",
             (
                 data["employee_id"],
@@ -146,11 +150,13 @@ def create_individual(config, data):
                 data.get("user_id"),
                 data.get("team_id"),
                 data.get("is_direct_staff", True),
+                data.get("location"),
+                data.get("location_lat"),
+                data.get("location_lng")
             ),
         )
         row = cur.fetchone()
         return row_to_dict(row)
-
 
 def get_all_individuals(config, team_id=None, user=None):
     """Retrieve all individuals with RBAC scoping and Manager hierarchy."""
@@ -161,9 +167,7 @@ def get_all_individuals(config, team_id=None, user=None):
     with conn.cursor() as cur:
         params = []
         
-        # Base query structure
         if role == "manager":
-            # RECURSIVE CTE: Gets the manager's team AND all child teams
             base_query = """
                 WITH RECURSIVE org_tree AS (
                     SELECT id, name, parent_team_id
@@ -179,7 +183,9 @@ def get_all_individuals(config, team_id=None, user=None):
                 SELECT i.id, i.employee_id, i.email, i.first_name, i.last_name, 
                        i.user_id, i.team_id, i.is_direct_staff, i.is_active, 
                        i.created_at, i.updated_at,
-                       u.location, u.location_lat, u.location_lng,
+                       COALESCE(i.location, u.location) as location, 
+                       COALESCE(i.location_lat, u.location_lat) as location_lat, 
+                       COALESCE(i.location_lng, u.location_lng) as location_lng,
                        t.name as team_name, i.designation
                 FROM individuals i
                 LEFT JOIN users u ON i.user_id = u.id
@@ -190,12 +196,13 @@ def get_all_individuals(config, team_id=None, user=None):
             params.append(user_id)
             
         else:
-            # Standard query for Admin, HR, or Employee
             base_query = """
                 SELECT i.id, i.employee_id, i.email, i.first_name, i.last_name, 
                        i.user_id, i.team_id, i.is_direct_staff, i.is_active, 
                        i.created_at, i.updated_at,
-                       u.location, u.location_lat, u.location_lng,
+                       COALESCE(i.location, u.location) as location, 
+                       COALESCE(i.location_lat, u.location_lat) as location_lat, 
+                       COALESCE(i.location_lng, u.location_lng) as location_lng,
                        t.name as team_name, i.designation
                 FROM individuals i
                 LEFT JOIN users u ON i.user_id = u.id
@@ -212,7 +219,6 @@ def get_all_individuals(config, team_id=None, user=None):
         cur.execute(base_query, tuple(params))
         rows = cur.fetchall()
         return [row_to_dict_full(row, role) for row in rows]
-
 
 def row_to_dict_full(row, role):
     """Convert a joined individual row to a dictionary, conditionally anonymizing based on role."""
@@ -233,7 +239,6 @@ def row_to_dict_full(row, role):
         
     return d
 
-
 def get_individual_by_id(config, individual_id):
     """Retrieve a single individual by ID."""
     conn = get_connection(config)
@@ -246,7 +251,6 @@ def get_individual_by_id(config, individual_id):
         row = cur.fetchone()
         return row_to_dict(row) if row else None
 
-
 def update_individual(config, individual_id, data):
     """Update an individual record."""
     conn = get_connection(config)
@@ -254,7 +258,7 @@ def update_individual(config, individual_id, data):
         cur.execute(
             """UPDATE individuals
                SET employee_id = %s, email = %s, first_name = %s, last_name = %s, designation = %s, user_id = %s,
-                   team_id = %s, is_direct_staff = %s, updated_at = CURRENT_TIMESTAMP
+                   team_id = %s, is_direct_staff = %s, location = %s, location_lat = %s, location_lng = %s, updated_at = CURRENT_TIMESTAMP
                WHERE id = %s
                RETURNING id, employee_id, email, first_name, last_name, user_id, team_id, is_direct_staff, is_active, created_at, updated_at""",
             (
@@ -266,12 +270,14 @@ def update_individual(config, individual_id, data):
                 data.get("user_id"),
                 data.get("team_id"),
                 data.get("is_direct_staff", True),
+                data.get("location"),
+                data.get("location_lat"),
+                data.get("location_lng"),
                 individual_id,
             ),
         )
         row = cur.fetchone()
         return row_to_dict(row) if row else None
-
 
 def delete_individual(config, individual_id):
     """Soft delete an individual record."""
@@ -285,8 +291,6 @@ def delete_individual(config, individual_id):
         )
         return cur.fetchone() is not None
 
-
-
 def check_email_exists(config, email):
     """Check if an email exists in the individuals table (HRIS source of truth)."""
     conn = get_connection(config)
@@ -294,7 +298,6 @@ def check_email_exists(config, email):
         cur.execute("SELECT designation FROM individuals WHERE email = %s LIMIT 1", (email,))
         row = cur.fetchone()
         return {"designation": row[0]} if row else None
-
 
 def row_to_dict(row):
     """Convert a database row tuple to a dictionary."""

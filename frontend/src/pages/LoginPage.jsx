@@ -192,16 +192,6 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {tab === 0 && (
-            <Box sx={{ mt: 3, p: 2, bgcolor: 'action.hover', borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5, fontWeight: 600 }}>
-                Demo Credentials
-              </Typography>
-              <Typography variant="caption" color="text.secondary" component="div" sx={{ fontFamily: 'monospace' }}>
-                Username: admin &nbsp;|&nbsp; Password: admin123
-              </Typography>
-            </Box>
-          )}
         </CardContent>
       </Card>
     </Box>

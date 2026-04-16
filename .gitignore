@@ -9,6 +9,7 @@ __pycache__/
 #Miscellaneous
 misc/
 code_summary.txt
+ai_context.xml
 
 # Distribution / packaging
 .Python

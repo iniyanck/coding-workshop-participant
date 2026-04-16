@@ -153,7 +153,7 @@ import os
 import urllib.request
 import urllib.parse
 import urllib.error
-from db import init_table, get_user_by_username, create_user, get_all_users, update_user_designation, delete_user, get_designation_by_role, get_user_by_id, check_individual_exists, link_individual_user
+from db import init_table, get_user_by_username, create_user, get_all_users, update_user_role, delete_user, get_user_by_id, check_individual_exists, link_individual_user
 from auth import hash_password, verify_password, create_token, verify_token
 
 logger = logging.getLogger()
@@ -171,7 +171,12 @@ PG_CONFIG = (
 if not IS_LOCAL:
     PG_CONFIG += " sslmode=require"
 
-VALID_ROLES = ["admin", "hr", "manager", "employee"]
+ROLE_LEVELS = {
+    "admin": 100,
+    "hr": 70,
+    "manager": 50,
+    "employee": 10
+}
 
 _initialized = False
 
@@ -226,7 +231,7 @@ def handler(event=None, context=None):
                 return response(401, {"error": "Authentication required"})
             if user["role"] not in ["admin", "hr"]:
                 return response(403, {"error": "Insufficient permissions"})
-            return handle_update_designation(resource_id, body, user)
+            return handle_update_role(resource_id, body, user)
         elif method == "DELETE":
             # Self-Deletion Route
             if path.endswith("/me"):
@@ -315,11 +320,16 @@ def handle_register(body):
 
     password_hash = hash_password(body["password"])
     
-    # Preemptive role assignment
-    assigned_role = hris_designation if hris_designation in VALID_ROLES else "employee"
-    
-    # If the user provides a role, only allow them to override it if it is safe, otherwise follow HRIS
-    # Actually just force HRIS designation since it's an enterprise system:
+    # Preemptive role assignment based on HRIS Designation
+    assigned_role = "employee"
+    if hris_designation:
+        desig_lower = hris_designation.lower()
+        if "admin" in desig_lower or "director" in desig_lower or "vp" in desig_lower:
+            assigned_role = "admin"
+        elif "hr " in desig_lower or "human resources" in desig_lower or "people" in desig_lower:
+            assigned_role = "hr"
+        elif "manager" in desig_lower or "lead" in desig_lower or "head" in desig_lower:
+            assigned_role = "manager"
     
     user_data = {
         "username": body["username"],
@@ -383,47 +393,38 @@ def handle_verify(headers):
         return response(401, {"error": "Invalid or expired token"})
     return response(200, {"user": user})
 
-def handle_update_designation(target_user_id, body, requesting_user):
-    """Update a user's designation enforcing hierarchy rules."""
+def handle_update_role(target_user_id, body, requesting_user):
+    """Update a user's role enforcing hierarchy rules."""
     new_role = body.get("role", "").strip()
     
-    if new_role not in VALID_ROLES:
-        return response(400, {"error": f"Invalid role. Must be one of {VALID_ROLES}"})
+    if new_role not in ROLE_LEVELS:
+        return response(400, {"error": f"Invalid role. Must be one of {list(ROLE_LEVELS.keys())}"})
 
-    # 1. Get the new designation ID and Level
-    new_designation = get_designation_by_role(PG_CONFIG, new_role)
-    if not new_designation:
-        return response(404, {"error": "Designation not found in database"})
-        
-    # 2. Get Target User's Current Level
+    # 1. Get Target User's Current Level
     target_user = get_user_by_id(PG_CONFIG, target_user_id)
     if not target_user:
         return response(404, {"error": "Target user not found"})
         
-    target_current_designation = get_designation_by_role(PG_CONFIG, target_user["role"])
-    target_level = target_current_designation["level"] if target_current_designation else 0
+    target_level = ROLE_LEVELS.get(target_user["role"], 0)
+    req_level = ROLE_LEVELS.get(requesting_user["role"], 0)
+    new_level = ROLE_LEVELS.get(new_role, 0)
 
-    # 3. Get Requesting User's Level
-    req_designation = get_designation_by_role(PG_CONFIG, requesting_user["role"])
-    req_level = req_designation["level"] if req_designation else 0
-
-    # 4. Enforce HR Logic
+    # 2. Enforce HR Logic
     if requesting_user["role"] == "hr":
-        # NEW: Location Attribute Check
         if target_user.get("location") != requesting_user.get("location"):
             return response(403, {"error": "HR domain restriction: You can only modify users within your assigned location."})
         
-        # HR cannot modify admins or other HR members
         if target_level >= req_level:
             return response(403, {"error": "You do not have permission to modify users at or above your level."})
-        # HR cannot promote someone to a level equal to or higher than their own
-        if new_designation["level"] >= req_level:
+            
+        if new_level >= req_level:
             return response(403, {"error": "You cannot promote a user to this level."})
 
-    # 5. Execute Update
-    updated_user = update_user_designation(PG_CONFIG, target_user_id, new_designation["id"])
+    # 3. Execute Update
+    from db import update_user_role
+    updated_user = update_user_role(PG_CONFIG, target_user_id, new_role)
     if not updated_user:
-        return response(404, {"error": "Failed to update user designation"})
+        return response(404, {"error": "Failed to update user role"})
     return response(200, updated_user)
 
 def handle_delete_user(user_id):
@@ -583,20 +584,12 @@ from auth import hash_password
 PG_CONN = None
 
 CREATE_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS designations (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title VARCHAR(100) UNIQUE NOT NULL,
-    role_name VARCHAR(20) NOT NULL,
-    color_hex VARCHAR(7) DEFAULT '#808080',
-    level INT DEFAULT 10
-);
-
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username VARCHAR(100) UNIQUE NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    designation_id UUID REFERENCES designations(id),
+    role VARCHAR(20) DEFAULT 'employee',
     location VARCHAR(200),
     location_lat DECIMAL(10, 8),
     location_lng DECIMAL(11, 8),
@@ -613,7 +606,6 @@ DEFAULT_ADMIN = {
 }
 
 def get_connection(config):
-    """Get or create a PostgreSQL connection with connection pooling."""
     global PG_CONN
     try:
         if PG_CONN is None or PG_CONN.closed:
@@ -624,62 +616,33 @@ def get_connection(config):
         raise
 
 def init_table(config):
-    """Create the users and designations tables and seed default data."""
+    """Create the users table and seed default admin."""
     conn = get_connection(config)
     with conn.cursor() as cur:
+        # Destructive migration to clean up the old anti-pattern
+        cur.execute("ALTER TABLE IF EXISTS users DROP COLUMN IF EXISTS designation_id;")
+        cur.execute("DROP TABLE IF EXISTS designations CASCADE;")
+        
         cur.execute(CREATE_TABLE_SQL)
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS location_lat DECIMAL(10, 8);")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS location_lng DECIMAL(11, 8);")
-        cur.execute("ALTER TABLE designations ADD COLUMN IF NOT EXISTS level INT DEFAULT 10;")
         
-        # Seed default designations
-        cur.execute("SELECT COUNT(*) FROM designations")
+        # Seed default admin
+        cur.execute("SELECT COUNT(*) FROM users WHERE username = 'admin'")
         if cur.fetchone()[0] == 0:
-            cur.execute("""
-                INSERT INTO designations (title, role_name, color_hex, level) VALUES 
-                ('System Administrator', 'admin', '#D32F2F', 100),
-                ('Human Resources', 'hr', '#1976D2', 70),
-                ('Manager', 'manager', '#388E3C', 50),
-                ('Employee', 'employee', '#FBC02D', 10)
-            """)
-        else:
-            # Update levels for existing designations if they were seeded previously
-            cur.execute("UPDATE designations SET level = 100 WHERE role_name = 'admin'")
-            cur.execute("UPDATE designations SET level = 70 WHERE role_name = 'hr'")
-            cur.execute("UPDATE designations SET level = 50 WHERE role_name = 'manager'")
-            cur.execute("UPDATE designations SET level = 10 WHERE role_name = 'employee'")
-            # Also handle the renaming of any leftovers if necessary or just leave it for the user
-            # I'll just ensure levels are set.
-        
-        # Seed default admin (requires fetching the admin designation ID first)
-        cur.execute("SELECT COUNT(*) FROM users")
-        if cur.fetchone()[0] == 0:
-            cur.execute("SELECT id FROM designations WHERE role_name = 'admin' LIMIT 1")
-            admin_desig_id = cur.fetchone()[0]
             password_hash = hash_password(DEFAULT_ADMIN["password"])
             cur.execute(
-                """INSERT INTO users (username, email, password_hash, designation_id)
+                """INSERT INTO users (username, email, password_hash, role)
                    VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING""",
-                (DEFAULT_ADMIN["username"], DEFAULT_ADMIN["email"], password_hash, admin_desig_id)
+                (DEFAULT_ADMIN["username"], DEFAULT_ADMIN["email"], password_hash, DEFAULT_ADMIN["role"])
             )
 
-def get_designation_by_role(config, role_name):
-    """Helper to fetch designation details by role name."""
-    conn = get_connection(config)
-    with conn.cursor() as cur:
-        cur.execute("SELECT id, level FROM designations WHERE role_name = %s", (role_name,))
-        row = cur.fetchone()
-        return {"id": str(row[0]), "level": row[1]} if row else None
-
 def get_user_by_username(config, username):
-    """Retrieve a user by username with designation join."""
+    """Retrieve a user by username, joining individuals to get HR designation."""
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(
-            """SELECT u.id, u.username, u.email, u.password_hash, u.location, u.location_lat, u.location_lng, u.created_at,
-                      d.role_name as role, d.title as designation, d.color_hex
+            """SELECT u.id, u.username, u.email, u.password_hash, u.location, u.location_lat, u.location_lng, u.created_at, u.role, i.designation
                FROM users u
-               LEFT JOIN designations d ON u.designation_id = d.id
+               LEFT JOIN individuals i ON u.email = i.email
                WHERE u.username = %s""",
             (username,)
         )
@@ -687,14 +650,13 @@ def get_user_by_username(config, username):
         return row_to_dict_joined(row) if row else None
 
 def get_user_by_id(config, user_id):
-    """Retrieve a user by ID with designation join."""
+    """Retrieve a user by ID, joining individuals to get HR designation."""
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(
-            """SELECT u.id, u.username, u.email, u.password_hash, u.location, u.location_lat, u.location_lng, u.created_at,
-                      d.role_name as role, d.title as designation, d.color_hex
+            """SELECT u.id, u.username, u.email, u.password_hash, u.location, u.location_lat, u.location_lng, u.created_at, u.role, i.designation
                FROM users u
-               LEFT JOIN designations d ON u.designation_id = d.id
+               LEFT JOIN individuals i ON u.email = i.email
                WHERE u.id = %s""",
             (user_id,)
         )
@@ -702,70 +664,58 @@ def get_user_by_id(config, user_id):
         return row_to_dict_joined(row) if row else None
 
 def create_user(config, data):
-    """Create a new user record."""
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(
-            """INSERT INTO users (username, email, password_hash, designation_id, location, location_lat, location_lng)
+            """INSERT INTO users (username, email, password_hash, role, location, location_lat, location_lng)
                VALUES (%s, %s, %s, %s, %s, %s, %s)
-               RETURNING id, username, email, password_hash, designation_id, location, location_lat, location_lng, created_at""",
+               RETURNING id""",
             (
                 data["username"],
                 data["email"],
                 data["password_hash"],
-                data.get("designation_id"),
+                data.get("role", "employee"),
                 data.get("location"),
                 data.get("location_lat"),
                 data.get("location_lng"),
             ),
         )
         row = cur.fetchone()
-        
-        # After inserting, fetch again with join to get the full role/designation info
         if row:
             return get_user_by_id(config, row[0])
         return None
 
 def get_all_users(config):
-    """Retrieve all users (without password hashes)."""
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(
-            """SELECT u.id, u.username, u.email, u.password_hash, u.location, u.location_lat, u.location_lng, u.created_at,
-                      d.role_name as role, d.title as designation, d.color_hex
+            """SELECT u.id, u.username, u.email, u.password_hash, u.location, u.location_lat, u.location_lng, u.created_at, u.role, i.designation
                FROM users u
-               LEFT JOIN designations d ON u.designation_id = d.id
+               LEFT JOIN individuals i ON u.email = i.email
                ORDER BY u.username"""
         )
         rows = cur.fetchall()
         users = [row_to_dict_joined(row) for row in rows]
-        # Remove password hashes from response
         for user in users:
             user.pop("password_hash", None)
         return users
 
-def update_user_designation(config, user_id, designation_id):
-    """Update a user's designation."""
+def update_user_role(config, user_id, role):
     conn = get_connection(config)
     with conn.cursor() as cur:
-        cur.execute(
-            "UPDATE users SET designation_id = %s WHERE id = %s RETURNING id",
-            (designation_id, user_id),
-        )
+        cur.execute("UPDATE users SET role = %s WHERE id = %s RETURNING id", (role, user_id))
         row = cur.fetchone()
         if row:
             return get_user_by_id(config, user_id)
         return None
 
 def delete_user(config, user_id):
-    """Delete a user record."""
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute("DELETE FROM users WHERE id = %s RETURNING id", (user_id,))
         return cur.fetchone() is not None
 
 def row_to_dict_joined(row):
-    """Convert a database row tuple (with joined designation info) to a dictionary."""
     if not row:
         return None
     return {
@@ -777,29 +727,11 @@ def row_to_dict_joined(row):
         "location_lat": float(row[5]) if row[5] is not None else None,
         "location_lng": float(row[6]) if row[6] is not None else None,
         "created_at": row[7].isoformat() if row[7] else None,
-        "role": row[8] or "employee",
-        "designation": row[9],
-        "color_hex": row[10]
-    }
-
-def row_to_dict(row):
-    """Convert a basic database row tuple to a dictionary."""
-    if not row:
-        return None
-    return {
-        "id": str(row[0]),
-        "username": row[1],
-        "email": row[2],
-        "password_hash": row[3],
-        "designation_id": str(row[4]) if row[4] else None,
-        "location": row[5],
-        "location_lat": float(row[6]) if row[6] is not None else None,
-        "location_lng": float(row[7]) if row[7] is not None else None,
-        "created_at": row[8].isoformat() if row[8] else None,
+        "role": row[8],
+        "designation": row[9] or "Pending HR Sync"
     }
 
 def check_individual_exists(config, email):
-    """Check if an individual with the given email exists, returning their designation."""
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute("SELECT designation FROM individuals WHERE email = %s AND is_active = true", (email,))
@@ -807,7 +739,6 @@ def check_individual_exists(config, email):
         return {"designation": row[0]} if row else None
 
 def link_individual_user(config, email, user_id):
-    """Link an individual to a newly created user ID."""
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute("UPDATE individuals SET user_id = %s WHERE email = %s", (user_id, email))
@@ -2521,14 +2452,17 @@ CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS individuals (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID UNIQUE, 
-    employee_id VARCHAR(50) UNIQUE NOT NULL, -- New Anchor
-    email VARCHAR(255) UNIQUE,               -- For JIT linking
+    employee_id VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE,               
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100) NOT NULL,
     designation VARCHAR(100),
     team_id UUID,
     is_direct_staff BOOLEAN DEFAULT true,
     is_active BOOLEAN DEFAULT true,
+    location VARCHAR(200),
+    location_lat DECIMAL(10, 8),
+    location_lng DECIMAL(11, 8),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -2551,6 +2485,9 @@ def init_table(config):
     with conn.cursor() as cur:
         cur.execute(CREATE_TABLE_SQL)
         cur.execute("ALTER TABLE individuals ADD COLUMN IF NOT EXISTS designation VARCHAR(100);")
+        cur.execute("ALTER TABLE individuals ADD COLUMN IF NOT EXISTS location VARCHAR(200);")
+        cur.execute("ALTER TABLE individuals ADD COLUMN IF NOT EXISTS location_lat DECIMAL(10, 8);")
+        cur.execute("ALTER TABLE individuals ADD COLUMN IF NOT EXISTS location_lng DECIMAL(11, 8);")
 
 def bulk_upsert_individuals(config, individuals_data):
     """Upsert a list of individuals based on employee_id, and deactivate those not in the list."""
@@ -2558,8 +2495,6 @@ def bulk_upsert_individuals(config, individuals_data):
     employee_ids = [data["employee_id"] for data in individuals_data if "employee_id" in data]
     
     with conn.cursor() as cur:
-        # Full Sync: Deactivate individuals not in the HRIS payload
-        # Clear their emails to prevent UniqueViolation if emails are reused
         if employee_ids:
             cur.execute(
                 """UPDATE individuals 
@@ -2570,8 +2505,8 @@ def bulk_upsert_individuals(config, individuals_data):
             
         for data in individuals_data:
             cur.execute(
-                """INSERT INTO individuals (employee_id, email, first_name, last_name, designation, team_id, is_direct_staff, is_active)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, true)
+                """INSERT INTO individuals (employee_id, email, first_name, last_name, designation, team_id, is_direct_staff, is_active, location, location_lat, location_lng)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, true, %s, %s, %s)
                    ON CONFLICT (employee_id) DO UPDATE SET
                        email = EXCLUDED.email,
                        first_name = EXCLUDED.first_name,
@@ -2580,6 +2515,9 @@ def bulk_upsert_individuals(config, individuals_data):
                        team_id = COALESCE(EXCLUDED.team_id, individuals.team_id),
                        is_direct_staff = EXCLUDED.is_direct_staff,
                        is_active = true,
+                       location = EXCLUDED.location,
+                       location_lat = EXCLUDED.location_lat,
+                       location_lng = EXCLUDED.location_lng,
                        updated_at = CURRENT_TIMESTAMP""",
                 (
                     data["employee_id"],
@@ -2588,7 +2526,10 @@ def bulk_upsert_individuals(config, individuals_data):
                     data["last_name"],
                     data.get("designation"),
                     data.get("team_id"),
-                    data.get("is_direct_staff", True)
+                    data.get("is_direct_staff", True),
+                    data.get("location"),
+                    data.get("location_lat"),
+                    data.get("location_lng")
                 )
             )
     return True
@@ -2638,8 +2579,8 @@ def create_individual(config, data):
     conn = get_connection(config)
     with conn.cursor() as cur:
         cur.execute(
-            """INSERT INTO individuals (employee_id, email, first_name, last_name, designation, user_id, team_id, is_direct_staff)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """INSERT INTO individuals (employee_id, email, first_name, last_name, designation, user_id, team_id, is_direct_staff, location, location_lat, location_lng)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                RETURNING id, employee_id, email, first_name, last_name, user_id, team_id, is_direct_staff, is_active, created_at, updated_at""",
             (
                 data["employee_id"],
@@ -2650,6 +2591,9 @@ def create_individual(config, data):
                 data.get("user_id"),
                 data.get("team_id"),
                 data.get("is_direct_staff", True),
+                data.get("location"),
+                data.get("location_lat"),
+                data.get("location_lng")
             ),
         )
         row = cur.fetchone()
@@ -2664,9 +2608,7 @@ def get_all_individuals(config, team_id=None, user=None):
     with conn.cursor() as cur:
         params = []
         
-        # Base query structure
         if role == "manager":
-            # RECURSIVE CTE: Gets the manager's team AND all child teams
             base_query = """
                 WITH RECURSIVE org_tree AS (
                     SELECT id, name, parent_team_id
@@ -2682,7 +2624,9 @@ def get_all_individuals(config, team_id=None, user=None):
                 SELECT i.id, i.employee_id, i.email, i.first_name, i.last_name, 
                        i.user_id, i.team_id, i.is_direct_staff, i.is_active, 
                        i.created_at, i.updated_at,
-                       u.location, u.location_lat, u.location_lng,
+                       COALESCE(i.location, u.location) as location, 
+                       COALESCE(i.location_lat, u.location_lat) as location_lat, 
+                       COALESCE(i.location_lng, u.location_lng) as location_lng,
                        t.name as team_name, i.designation
                 FROM individuals i
                 LEFT JOIN users u ON i.user_id = u.id
@@ -2693,12 +2637,13 @@ def get_all_individuals(config, team_id=None, user=None):
             params.append(user_id)
             
         else:
-            # Standard query for Admin, HR, or Employee
             base_query = """
                 SELECT i.id, i.employee_id, i.email, i.first_name, i.last_name, 
                        i.user_id, i.team_id, i.is_direct_staff, i.is_active, 
                        i.created_at, i.updated_at,
-                       u.location, u.location_lat, u.location_lng,
+                       COALESCE(i.location, u.location) as location, 
+                       COALESCE(i.location_lat, u.location_lat) as location_lat, 
+                       COALESCE(i.location_lng, u.location_lng) as location_lng,
                        t.name as team_name, i.designation
                 FROM individuals i
                 LEFT JOIN users u ON i.user_id = u.id
@@ -2754,7 +2699,7 @@ def update_individual(config, individual_id, data):
         cur.execute(
             """UPDATE individuals
                SET employee_id = %s, email = %s, first_name = %s, last_name = %s, designation = %s, user_id = %s,
-                   team_id = %s, is_direct_staff = %s, updated_at = CURRENT_TIMESTAMP
+                   team_id = %s, is_direct_staff = %s, location = %s, location_lat = %s, location_lng = %s, updated_at = CURRENT_TIMESTAMP
                WHERE id = %s
                RETURNING id, employee_id, email, first_name, last_name, user_id, team_id, is_direct_staff, is_active, created_at, updated_at""",
             (
@@ -2766,6 +2711,9 @@ def update_individual(config, individual_id, data):
                 data.get("user_id"),
                 data.get("team_id"),
                 data.get("is_direct_staff", True),
+                data.get("location"),
+                data.get("location_lat"),
+                data.get("location_lng"),
                 individual_id,
             ),
         )
@@ -3987,30 +3935,41 @@ export const ColorModeProvider = ({ children }) => {
 import axios from 'axios';
 
 // Note: Nominatim is free but has strict rate limits (1 request/second).
-// For a workshop project, this is perfect.
 export const geocodeLocation = async (locationString) => {
   if (!locationString) return { lat: null, lng: null };
   
-  try {
-    const response = await axios.get('https://nominatim.openstreetmap.org/search', {
-      params: {
-        q: locationString,
-        format: 'json',
-        limit: 1
+  const trySearch = async (query) => {
+    try {
+      const response = await axios.get('https://nominatim.openstreetmap.org/search', {
+        params: { q: query, format: 'json', limit: 1 }
+      });
+      if (response.data && response.data.length > 0) {
+        return {
+          lat: parseFloat(response.data[0].lat),
+          lng: parseFloat(response.data[0].lon)
+        };
       }
-    });
-
-    if (response.data && response.data.length > 0) {
-      return {
-        lat: parseFloat(response.data[0].lat),
-        lng: parseFloat(response.data[0].lon)
-      };
+      return null;
+    } catch (error) {
+      console.error("Geocoding failed for query:", query, error);
+      return null;
     }
-    return { lat: null, lng: null };
-  } catch (error) {
-    console.error("Geocoding failed:", error);
-    return { lat: null, lng: null };
+  };
+
+  // 1. Try exact match
+  let coords = await trySearch(locationString);
+  if (coords) return coords;
+
+  // 2. Try cleaning up typos/special characters and searching the macro-location (like state/country)
+  // E.g., "Nw Yrok, USA" might fail, but "USA" will drop them on the map.
+  const parts = locationString.split(',').map(s => s.trim());
+  if (parts.length > 1) {
+    coords = await trySearch(parts[parts.length - 1]);
+    if (coords) return coords;
   }
+  
+  // 3. Fallback: Return a default coordinate (0,0) if everything completely fails.
+  return { lat: 0, lng: 0 };
 };
     </file>
     <file path="frontend/src/pages/UsersPage.jsx">
@@ -4111,16 +4070,13 @@ export default function UsersPage() {
                     </TableCell>
                     <TableCell><Typography variant="body2" color="text.secondary">{user.email}</Typography></TableCell>
                     <TableCell>
-                      {user.designation ? (
-                        <Chip label={user.designation} size="small"
-                          sx={{
-                            borderRadius: 1.5, fontWeight: 500,
-                            bgcolor: user.color_hex ? `${user.color_hex}18` : 'action.hover',
-                            color: user.color_hex || 'text.secondary',
-                            border: user.color_hex ? `1px solid ${user.color_hex}30` : 'none',
-                          }}
-                        />
-                      ) : '—'}
+                      <Chip label={user.designation} size="small"
+                        sx={{
+                          borderRadius: 1.5, fontWeight: 500,
+                          bgcolor: 'action.hover',
+                          color: 'text.secondary',
+                        }}
+                      />
                     </TableCell>
                     <TableCell>
                       <FormControl size="small" sx={{ minWidth: 130 }}>
@@ -6148,7 +6104,7 @@ import {
   Box, Button, Typography, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, Snackbar, Alert, Chip, CircularProgress,
-  Tooltip, Divider, Checkbox, FormControlLabel, useTheme,
+  Tooltip, Checkbox, FormControlLabel, useTheme,
 } from '@mui/material';
 import {
   Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon,
@@ -6156,19 +6112,20 @@ import {
   Storage as StorageIcon, PlayArrow as PlayIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
+import { geocodeLocation } from '../utils/geocode';
 
 const INITIAL_HRIS_DATA = [
-  { employee_id: 'EMP-001', email: 'admin@acme.com', first_name: 'Admin', last_name: 'User', is_direct_staff: true, designation: 'admin' },
-  { employee_id: 'EMP-002', email: 'jdoe@acme.com', first_name: 'John', last_name: 'Doe', is_direct_staff: true, designation: 'manager' },
-  { employee_id: 'EMP-003', email: 'jsmith@acme.com', first_name: 'Jane', last_name: 'Smith', is_direct_staff: true, designation: 'hr' },
-  { employee_id: 'EMP-004', email: 'mbrown@acme.com', first_name: 'Michael', last_name: 'Brown', is_direct_staff: false, designation: 'employee' },
-  { employee_id: 'EMP-005', email: 'swilson@acme.com', first_name: 'Sarah', last_name: 'Wilson', is_direct_staff: true, designation: 'employee' },
-  { employee_id: 'EMP-006', email: 'dlee@acme.com', first_name: 'David', last_name: 'Lee', is_direct_staff: false, designation: 'employee' },
-  { employee_id: 'EMP-007', email: 'egarcia@acme.com', first_name: 'Emily', last_name: 'Garcia', is_direct_staff: true, designation: 'employee' },
-  { employee_id: 'EMP-008', email: 'rjohnson@acme.com', first_name: 'Robert', last_name: 'Johnson', is_direct_staff: true, designation: 'employee' },
+  { employee_id: 'EMP-001', email: 'admin@acme.com', first_name: 'Admin', last_name: 'User', is_direct_staff: true, designation: 'Director of IT', location: 'San Francisco, CA' },
+  { employee_id: 'EMP-002', email: 'jdoe@acme.com', first_name: 'John', last_name: 'Doe', is_direct_staff: true, designation: 'Engineering Manager', location: 'New York, NY' },
+  { employee_id: 'EMP-003', email: 'jsmith@acme.com', first_name: 'Jane', last_name: 'Smith', is_direct_staff: true, designation: 'HR Business Partner', location: 'Lodon, UK' }, // Intentional Typo
+  { employee_id: 'EMP-004', email: 'mbrown@acme.com', first_name: 'Michael', last_name: 'Brown', is_direct_staff: false, designation: 'Software Engineer', location: 'Austin, TX' },
+  { employee_id: 'EMP-005', email: 'swilson@acme.com', first_name: 'Sarah', last_name: 'Wilson', is_direct_staff: true, designation: 'Product Designer', location: 'Seatlte, WA' }, // Intentional Typo
+  { employee_id: 'EMP-006', email: 'dlee@acme.com', first_name: 'David', last_name: 'Lee', is_direct_staff: false, designation: 'Data Analyst', location: 'Chicago, IL' },
+  { employee_id: 'EMP-007', email: 'egarcia@acme.com', first_name: 'Emily', last_name: 'Garcia', is_direct_staff: true, designation: 'Account Executive', location: 'Miami, FL' },
+  { employee_id: 'EMP-008', email: 'rjohnson@acme.com', first_name: 'Robert', last_name: 'Johnson', is_direct_staff: true, designation: 'Customer Support Lead', location: 'Toronto, ON' },
 ];
 
-const EMPTY_FORM = { employee_id: '', email: '', first_name: '', last_name: '', is_direct_staff: true, designation: 'employee' };
+const EMPTY_FORM = { employee_id: '', email: '', first_name: '', last_name: '', is_direct_staff: true, designation: '', location: '' };
 
 export default function HRISConsolePage() {
   const theme = useTheme();
@@ -6201,7 +6158,6 @@ export default function HRISConsolePage() {
     if (!form.last_name.trim()) e.last_name = 'Required';
     if (!form.email.trim()) e.email = 'Required';
     else if (!form.email.includes('@')) e.email = 'Invalid email';
-    // Check for duplicate employee_id
     const dupIndex = hrisData.findIndex(d => d.employee_id === form.employee_id);
     if (dupIndex !== -1 && dupIndex !== editingIndex) e.employee_id = 'Duplicate ID';
     setErrors(e);
@@ -6237,12 +6193,22 @@ export default function HRISConsolePage() {
     setSyncResult(null);
 
     try {
+      // Intercept and resolve locations into coordinates before syncing with the backend
+      const enrichedData = await Promise.all(hrisData.map(async (emp) => {
+        if (emp.location) {
+            const coords = await geocodeLocation(emp.location);
+            return { ...emp, location_lat: coords.lat, location_lng: coords.lng };
+        }
+        return emp;
+      }));
+
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
       const response = await axios.post(
         `${apiUrl}/api/individuals-service/import`,
-        { individuals: hrisData },
+        { individuals: enrichedData },
         { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
       );
+      
       setSyncResult({
         success: true,
         message: response.data.message || `Successfully synced ${hrisData.length} records`,
@@ -6309,14 +6275,6 @@ export default function HRISConsolePage() {
                 ? '0 4px 14px rgba(16,185,129,0.4)'
                 : '0 4px 14px rgba(0,0,0,0.4)',
               fontSize: '0.95rem',
-              '&:hover': {
-                background: theme.palette.mode === 'light'
-                  ? 'linear-gradient(135deg, #059669 0%, #047857 100%)'
-                  : 'linear-gradient(135deg, #047857 0%, #064e3b 100%)',
-                boxShadow: theme.palette.mode === 'light'
-                  ? '0 6px 20px rgba(16,185,129,0.5)'
-                  : '0 6px 20px rgba(0,0,0,0.5)',
-              },
             }}
           >
             {syncing ? 'Syncing...' : 'Trigger Sync'}
@@ -6396,7 +6354,7 @@ export default function HRISConsolePage() {
                     <TableCell><Typography variant="body2" color="text.secondary">{record.email}</Typography></TableCell>
                     <TableCell>
                       <Typography variant="body2" color="text.secondary">
-                        {record.designation === 'hr' ? 'HR' : (record.designation || 'employee').charAt(0).toUpperCase() + (record.designation || 'employee').slice(1)}
+                        {record.designation || 'Pending'}
                       </Typography>
                     </TableCell>
                     <TableCell>
@@ -6480,16 +6438,16 @@ export default function HRISConsolePage() {
             sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
             placeholder="e.g. name@acme.com"
           />
-          <TextField fullWidth select label="Role / Designation" value={form.designation || 'employee'}
+          <TextField fullWidth label="Designation / Job Title" value={form.designation}
             onChange={(e) => setForm({ ...form, designation: e.target.value })}
-            SelectProps={{ native: true }}
             sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-          >
-            <option value="employee">Employee</option>
-            <option value="manager">Manager</option>
-            <option value="hr">HR</option>
-            <option value="admin">System Administrator</option>
-          </TextField>
+            placeholder="e.g. Senior Software Engineer"
+          />
+          <TextField fullWidth label="Location (City, Country)" value={form.location || ''}
+            onChange={(e) => setForm({ ...form, location: e.target.value })}
+            sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            placeholder="e.g. San Francisco, CA"
+          />
           <FormControlLabel
             control={<Checkbox checked={!form.is_direct_staff} onChange={(e) => setForm({ ...form, is_direct_staff: !e.target.checked })} />}
             label="Indirect Staff"
@@ -6711,16 +6669,6 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {tab === 0 && (
-            <Box sx={{ mt: 3, p: 2, bgcolor: 'action.hover', borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5, fontWeight: 600 }}>
-                Demo Credentials
-              </Typography>
-              <Typography variant="caption" color="text.secondary" component="div" sx={{ fontFamily: 'monospace' }}>
-                Username: admin &nbsp;|&nbsp; Password: admin123
-              </Typography>
-            </Box>
-          )}
         </CardContent>
       </Card>
     </Box>
@@ -8483,13 +8431,6 @@ const TeamMap = ({ individuals, teamInfo }) => {
   const theme = useTheme();
   const [selectedPerson, setSelectedPerson] = useState(null);
 
-  // Default to a central view, or calculate bounds based on data
-  const initialViewState = {
-    longitude: 72.8777, // Default: Mumbai
-    latitude: 19.0760,
-    zoom: 4
-  };
-
   const getMarkerStyle = (person) => {
     const isLeader = person.id === teamInfo?.leader_id || person.id === teamInfo?.org_leader_id;
     if (isLeader) return { color: theme.palette.error.main, icon: <StarIcon fontSize="large" sx={{ color: 'error.main' }}/>, label: 'Leader' };
@@ -8498,13 +8439,53 @@ const TeamMap = ({ individuals, teamInfo }) => {
   };
 
   const mappableIndividuals = useMemo(() => {
-    return individuals.filter(p => p.location_lat && p.location_lng);
+    return individuals.filter(p => p.location_lat != null && p.location_lng != null);
   }, [individuals]);
+
+  // Apply a tiny random positional offset to spread out markers that land on the exact same city
+  const jitteredIndividuals = useMemo(() => {
+    const seen = {};
+    return mappableIndividuals.map(p => {
+        const key = `${p.location_lat},${p.location_lng}`;
+        if (seen[key]) {
+            const offsetLat = (Math.random() - 0.5) * 0.05;
+            const offsetLng = (Math.random() - 0.5) * 0.05;
+            seen[key] += 1;
+            return { ...p, location_lat: p.location_lat + offsetLat, location_lng: p.location_lng + offsetLng };
+        }
+        seen[key] = 1;
+        return p;
+    });
+  }, [mappableIndividuals]);
+
+  const viewState = useMemo(() => {
+    if (mappableIndividuals.length === 0) {
+      return { longitude: 72.8777, latitude: 19.0760, zoom: 4 };
+    }
+    
+    let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+    mappableIndividuals.forEach(p => {
+       if (p.location_lng < minLng) minLng = p.location_lng;
+       if (p.location_lng > maxLng) maxLng = p.location_lng;
+       if (p.location_lat < minLat) minLat = p.location_lat;
+       if (p.location_lat > maxLat) maxLat = p.location_lat;
+    });
+
+    if (minLng === maxLng && minLat === maxLat) {
+       return { longitude: minLng, latitude: minLat, zoom: 8 };
+    }
+
+    return {
+       longitude: (minLng + maxLng) / 2,
+       latitude: (minLat + maxLat) / 2,
+       zoom: 3
+    };
+  }, [mappableIndividuals]);
 
   if (mappableIndividuals.length === 0) {
     return (
       <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3, bgcolor: 'action.hover' }}>
-        <Typography color="text.secondary">No location data available for this team yet.</Typography>
+        <Typography color="text.secondary">No location data available for this team yet. Use HRIS Console to push locations.</Typography>
       </Paper>
     );
   }
@@ -8525,12 +8506,12 @@ const TeamMap = ({ individuals, teamInfo }) => {
       boxShadow: theme.palette.mode === 'light' ? '0 10px 30px rgba(0,0,0,0.1)' : '0 10px 30px rgba(0,0,0,0.4)' 
     }}>
       <Map
-        initialViewState={initialViewState}
+        initialViewState={viewState}
         mapStyle={mapStyle}
       >
         <NavigationControl position="top-right" />
 
-        {mappableIndividuals.map(person => (
+        {jitteredIndividuals.map(person => (
           <Marker 
             key={person.id} 
             longitude={person.location_lng} 
