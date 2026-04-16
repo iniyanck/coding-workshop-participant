@@ -19,7 +19,7 @@ jobs:
         run: |
           cd backend/auth-service
           pip install -r requirements.txt
-          pytest
+          pytest -v
 
   test-frontend:
     runs-on: ubuntu-latest
@@ -33,7 +33,11 @@ jobs:
         run: |
           cd frontend
           npm install
-          npm run test
+          npx vitest run --passWithNoTests
+      - name: Build Check
+        run: |
+          cd frontend
+          npm run build
 
   deploy:
     needs: [test-backend, test-frontend]

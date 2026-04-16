@@ -9,6 +9,7 @@ import IndividualsPage from './pages/IndividualsPage';
 import TeamsPage from './pages/TeamsPage';
 import AchievementsPage from './pages/AchievementsPage';
 import UsersPage from './pages/UsersPage';
+import HRISConsolePage from './pages/HRISConsolePage';
 
 const theme = createTheme({
   palette: {
@@ -58,6 +59,11 @@ function App() {
           <Route path="users" element={
             <ProtectedRoute requiredRoles={['admin']}>
               <UsersPage />
+            </ProtectedRoute>
+          } />
+          <Route path="hris-console" element={
+            <ProtectedRoute requiredRoles={['admin']}>
+              <HRISConsolePage />
             </ProtectedRoute>
           } />
         </Route>

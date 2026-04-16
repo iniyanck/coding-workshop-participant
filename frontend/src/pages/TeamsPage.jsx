@@ -18,7 +18,7 @@ import TeamMap from '../components/TeamMap';
 import { geocodeLocation } from '../utils/geocode';
 import MapIcon from '@mui/icons-material/Map';
 
-const EMPTY_FORM = { name: '', description: '', location: '', leader_id: '', org_leader_id: '' };
+const EMPTY_FORM = { name: '', unit_type: 'Team', description: '', location: '', leader_id: '', org_leader_id: '', parent_team_id: '' };
 
 export default function TeamsPage() {
   const [teams, setTeams] = useState([]);
@@ -61,8 +61,8 @@ export default function TeamsPage() {
     if (team) {
       setEditingId(team.id);
       setForm({
-        name: team.name || '', description: team.description || '', location: team.location || '',
-        leader_id: team.leader_id || '', org_leader_id: team.org_leader_id || '',
+        name: team.name || '', unit_type: team.unit_type || 'Team', description: team.description || '', location: team.location || '',
+        leader_id: team.leader_id || '', org_leader_id: team.org_leader_id || '', parent_team_id: team.parent_team_id || '',
       });
     } else {
       setEditingId(null);
@@ -98,6 +98,7 @@ export default function TeamsPage() {
         location_lng: lng,
         leader_id: form.leader_id || null,
         org_leader_id: form.org_leader_id || null,
+        parent_team_id: form.parent_team_id || null,
       };
       if (editingId) {
         await teamsService.update(editingId, data);
@@ -172,10 +173,10 @@ export default function TeamsPage() {
                 <TableHead>
                   <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: '#f8fafc', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                     <TableCell>Team Name</TableCell>
-                    <TableCell>Description</TableCell>
+                    <TableCell>Type</TableCell>
                     <TableCell>Location</TableCell>
                     <TableCell>Leader</TableCell>
-                    <TableCell>Org Leader</TableCell>
+                    <TableCell>Parent</TableCell>
                     <TableCell align="center">Members</TableCell>
                     {(authService.canUpdate() || authService.canDelete()) && <TableCell align="right">Actions</TableCell>}
                   </TableRow>
@@ -205,9 +206,12 @@ export default function TeamsPage() {
                           <Typography variant="subtitle2" fontWeight={600}>{team.name}</Typography>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {team.description || '—'}
-                          </Typography>
+                          <Chip label={team.unit_type || 'Team'} size="small"
+                            sx={{ borderRadius: 1.5, fontWeight: 500, fontSize: '0.7rem',
+                              bgcolor: team.unit_type === 'Division' ? '#fce7f3' : team.unit_type === 'Department' ? '#dbeafe' : '#dcfce7',
+                              color: team.unit_type === 'Division' ? '#db2777' : team.unit_type === 'Department' ? '#2563eb' : '#16a34a',
+                            }}
+                          />
                         </TableCell>
                         <TableCell><Typography variant="body2" color="text.secondary">{team.location || '—'}</Typography></TableCell>
                         <TableCell>
@@ -224,7 +228,11 @@ export default function TeamsPage() {
                             />
                           )}
                         </TableCell>
-                        <TableCell><Typography variant="body2" color="text.secondary">{getPersonName(team.org_leader_id)}</Typography></TableCell>
+                        <TableCell>
+                          <Typography variant="body2" color="text.secondary">
+                            {team.parent_team_id ? (teams.find(t => t.id === team.parent_team_id)?.name || '—') : '—'}
+                          </Typography>
+                        </TableCell>
                         <TableCell align="center">
                           <Chip label={team.member_count || 0} size="small"
                             sx={{ fontWeight: 700, bgcolor: '#ede9fe', color: '#7c3aed', minWidth: 36 }} />
@@ -282,11 +290,23 @@ export default function TeamsPage() {
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 700 }}>{editingId ? 'Edit Team' : 'Add Team'}</DialogTitle>
         <DialogContent sx={{ pt: '16px !important' }}>
-          <TextField fullWidth label="Team Name" value={form.name} required
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            error={!!errors.name} helperText={errors.name}
-            sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-          />
+          <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 2, mb: 2 }}>
+            <TextField fullWidth label="Team Name" value={form.name} required
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              error={!!errors.name} helperText={errors.name}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+            />
+            <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
+              <InputLabel>Unit Type</InputLabel>
+              <Select value={form.unit_type} label="Unit Type"
+                onChange={(e) => setForm({ ...form, unit_type: e.target.value })}
+              >
+                <MenuItem value="Team">Team</MenuItem>
+                <MenuItem value="Department">Department</MenuItem>
+                <MenuItem value="Division">Division</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
           <TextField fullWidth label="Description" value={form.description} multiline rows={2}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
@@ -295,7 +315,7 @@ export default function TeamsPage() {
             onChange={(e) => setForm({ ...form, location: e.target.value })}
             sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
           />
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>
             <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
               <InputLabel>Team Leader</InputLabel>
               <Select value={form.leader_id} label="Team Leader"
@@ -315,6 +335,15 @@ export default function TeamsPage() {
               </Select>
             </FormControl>
           </Box>
+          <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
+            <InputLabel>Parent Unit</InputLabel>
+            <Select value={form.parent_team_id} label="Parent Unit"
+              onChange={(e) => setForm({ ...form, parent_team_id: e.target.value })}
+            >
+              <MenuItem value="">None (Top Level)</MenuItem>
+              {teams.filter(t => t.id !== editingId).map(t => <MenuItem key={t.id} value={t.id}>{t.name} ({t.unit_type || 'Team'})</MenuItem>)}
+            </Select>
+          </FormControl>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDialogOpen(false)} sx={{ borderRadius: 2 }}>Cancel</Button>

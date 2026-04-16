@@ -12,9 +12,9 @@ import ConfirmDialog from '../components/ConfirmDialog';
 
 const roleColors = {
   admin: { bg: '#fef2f2', color: '#ef4444' },
+  hr: { bg: '#eff6ff', color: '#3b82f6' },
   manager: { bg: '#fffbeb', color: '#f59e0b' },
-  contributor: { bg: '#eff6ff', color: '#3b82f6' },
-  viewer: { bg: '#f3f4f6', color: '#6b7280' },
+  employee: { bg: '#f3f4f6', color: '#6b7280' },
 };
 
 export default function UsersPage() {
@@ -42,8 +42,8 @@ export default function UsersPage() {
       await authService.updateUserRole(userId, newRole);
       showSnack('Role updated');
       loadData();
-    } catch {
-      showSnack('Failed to update role', 'error');
+    } catch (err) {
+      showSnack(err.response?.data?.error || 'Failed to update role', 'error');
     }
   };
 
@@ -66,7 +66,7 @@ export default function UsersPage() {
         <Typography variant="h5" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
           <AdminIcon sx={{ color: '#ef4444' }} /> User Management
         </Typography>
-        <Typography variant="body2" color="text.secondary">Manage user accounts and roles</Typography>
+        <Typography variant="body2" color="text.secondary">Manage user accounts and role designations</Typography>
       </Box>
 
       <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
@@ -79,7 +79,9 @@ export default function UsersPage() {
                 <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: '#f8fafc', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                   <TableCell>Username</TableCell>
                   <TableCell>Email</TableCell>
+                  <TableCell>Designation</TableCell>
                   <TableCell>Role</TableCell>
+                  <TableCell>Location</TableCell>
                   <TableCell>Created</TableCell>
                   <TableCell align="right">Actions</TableCell>
                 </TableRow>
@@ -91,6 +93,18 @@ export default function UsersPage() {
                       <Typography variant="subtitle2" fontWeight={600}>{user.username}</Typography>
                     </TableCell>
                     <TableCell><Typography variant="body2" color="text.secondary">{user.email}</Typography></TableCell>
+                    <TableCell>
+                      {user.designation ? (
+                        <Chip label={user.designation} size="small"
+                          sx={{
+                            borderRadius: 1.5, fontWeight: 500,
+                            bgcolor: user.color_hex ? `${user.color_hex}18` : '#f3f4f6',
+                            color: user.color_hex || '#6b7280',
+                            border: user.color_hex ? `1px solid ${user.color_hex}30` : 'none',
+                          }}
+                        />
+                      ) : '—'}
+                    </TableCell>
                     <TableCell>
                       <FormControl size="small" sx={{ minWidth: 130 }}>
                         <Select
@@ -104,11 +118,14 @@ export default function UsersPage() {
                             '& .MuiSelect-icon': { color: roleColors[user.role]?.color },
                           }}
                         >
-                          {['admin', 'manager', 'contributor', 'viewer'].map(r => (
+                          {['admin', 'hr', 'manager', 'employee'].map(r => (
                             <MenuItem key={r} value={r} sx={{ textTransform: 'capitalize' }}>{r}</MenuItem>
                           ))}
                         </Select>
                       </FormControl>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">{user.location || '—'}</Typography>
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2" color="text.secondary">

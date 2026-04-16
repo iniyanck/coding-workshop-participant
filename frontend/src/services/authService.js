@@ -82,19 +82,23 @@ export const authService = {
   },
 
   canCreate() {
-    return this.hasRole(['admin', 'manager', 'contributor']);
+    return this.hasRole(['admin', 'hr', 'manager']);
   },
 
   canUpdate() {
-    return this.hasRole(['admin', 'manager', 'contributor']);
+    return this.hasRole(['admin', 'hr', 'manager']);
   },
 
   canDelete() {
-    return this.hasRole(['admin', 'manager']);
+    return this.hasRole(['admin']);
   },
 
   isAdmin() {
     return this.hasRole(['admin']);
+  },
+
+  isHR() {
+    return this.hasRole(['hr']);
   },
 };
 

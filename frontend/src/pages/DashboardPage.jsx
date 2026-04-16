@@ -7,6 +7,7 @@ import {
 import {
   People as PeopleIcon, Groups as GroupsIcon, EmojiEvents as TrophyIcon,
   TrendingUp as TrendingIcon, LocationOn as LocationIcon,
+  MilitaryTech as AwardIcon,
 } from '@mui/icons-material';
 import teamsService from '../services/teamsService';
 import individualsService from '../services/individualsService';
@@ -47,7 +48,7 @@ const StatCard = ({ title, value, icon, gradient, loading, onClick }) => (
 export default function DashboardPage() {
   const [teams, setTeams] = useState([]);
   const [individuals, setIndividuals] = useState([]);
-  const [achievements, setAchievements] = useState([]);
+  const [awards, setAwards] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const user = authService.getUser();
@@ -61,11 +62,11 @@ export default function DashboardPage() {
       const [t, i, a] = await Promise.all([
         teamsService.getAll().catch(() => []),
         individualsService.getAll().catch(() => []),
-        achievementsService.getAll().catch(() => []),
+        achievementsService.getAwards().catch(() => []),
       ]);
       setTeams(t);
       setIndividuals(i);
-      setAchievements(a);
+      setAwards(a);
     } finally {
       setLoading(false);
     }
@@ -93,7 +94,7 @@ export default function DashboardPage() {
 
   const orgLeaderTeams = teams.filter(t => t.org_leader_id);
 
-  const recentAchievements = achievements.slice(0, 5);
+  const recentAwards = awards.slice(0, 5);
 
   return (
     <Box>
@@ -118,7 +119,7 @@ export default function DashboardPage() {
             onClick={() => navigate('/teams')} />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-          <StatCard title="Achievements" value={achievements.length} loading={loading}
+          <StatCard title="Awards" value={awards.length} loading={loading}
             icon={<TrophyIcon />} gradient="linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)"
             onClick={() => navigate('/achievements')} />
         </Grid>
@@ -157,35 +158,35 @@ export default function DashboardPage() {
         <Grid size={{ xs: 12, md: 6 }}>
           <Paper sx={{ borderRadius: 3, p: 3, height: '100%' }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <TrophyIcon sx={{ color: '#f59e0b' }} /> Recent Achievements
+              <AwardIcon sx={{ color: '#f59e0b' }} /> Recent Awards
             </Typography>
             {loading ? (
               [1, 2, 3].map(i => <Skeleton key={i} height={60} sx={{ mb: 1 }} />)
-            ) : recentAchievements.length === 0 ? (
+            ) : recentAwards.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
-                No achievements yet. Start tracking your team's wins!
+                No awards granted yet. Start recognizing your team's wins!
               </Typography>
             ) : (
               <List disablePadding>
-                {recentAchievements.map((ach, idx) => (
-                  <Box key={ach.id}>
+                {recentAwards.map((award, idx) => (
+                  <Box key={award.id}>
                     <ListItem alignItems="flex-start" sx={{ px: 0 }}>
                       <ListItemAvatar>
                         <Avatar sx={{ bgcolor: '#fef3c7', color: '#f59e0b' }}>
-                          <TrophyIcon fontSize="small" />
+                          <AwardIcon fontSize="small" />
                         </Avatar>
                       </ListItemAvatar>
                       <ListItemText
-                        primary={<Typography variant="subtitle2" fontWeight={600}>{ach.title}</Typography>}
+                        primary={<Typography variant="subtitle2" fontWeight={600}>{award.title}</Typography>}
                         secondary={
-                          <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
-                            {ach.team_name && <Chip label={ach.team_name} size="small" sx={{ height: 20, fontSize: '0.65rem' }} />}
-                            <Typography variant="caption" color="text.secondary">{ach.achievement_date}</Typography>
+                          <Box sx={{ display: 'flex', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
+                            {award.recurrence && <Chip label={award.recurrence} size="small" sx={{ height: 20, fontSize: '0.65rem' }} />}
+                            <Typography variant="caption" color="text.secondary">{award.awarded_date}</Typography>
                           </Box>
                         }
                       />
                     </ListItem>
-                    {idx < recentAchievements.length - 1 && <Divider />}
+                    {idx < recentAwards.length - 1 && <Divider />}
                   </Box>
                 ))}
               </List>

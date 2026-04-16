@@ -63,6 +63,8 @@ def handler(event=None, context=None):
                 return handle_bulk_import(body)
             elif path.endswith("/link"):
                 return handle_jit_link(body)
+            elif path.endswith("/sync"):
+                return handle_hris_sync()
             return handle_create(body)
         elif method == "GET":
             if path.endswith("/lookup"):
@@ -129,6 +131,25 @@ def handle_jit_link(body):
     if result:
         return response(200, {"message": "Account linked successfully", "individual": result})
     return response(404, {"message": "No unlinked individual found with that email."})
+
+
+def handle_hris_sync():
+    """Handle POST /api/individuals-service/sync — inline HRIS sync (replaces EventBridge trigger)."""
+    logger.info("Starting inline HRIS employee sync...")
+
+    # Mock HRIS data — in production this would call Workday, BambooHR, etc.
+    mock_hris_data = [
+        {"employee_id": "EMP-001", "email": "jdoe@acme.com", "first_name": "John", "last_name": "Doe", "is_direct_staff": True},
+        # Add more mock records as needed for testing
+    ]
+
+    try:
+        bulk_upsert_individuals(PG_CONFIG, mock_hris_data)
+        logger.info(f"HRIS sync complete: {len(mock_hris_data)} records processed.")
+        return response(200, {"message": f"Sync complete. {len(mock_hris_data)} records processed.", "count": len(mock_hris_data)})
+    except Exception as e:
+        logger.error(f"HRIS sync failed: {str(e)}")
+        return response(500, {"error": "HRIS sync failed", "message": str(e)})
 
 
 def get_user_from_event(event):

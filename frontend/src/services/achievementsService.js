@@ -3,28 +3,33 @@ import api from './api';
 const ENDPOINT = '/api/achievements-service';
 
 export const achievementsService = {
-  async getAll(teamId = null) {
-    const params = teamId ? { team_id: teamId } : {};
-    const response = await api.get(ENDPOINT, { params });
+  // --- Catalog (achievement definitions) ---
+  async getCatalog() {
+    const response = await api.get(`${ENDPOINT}/catalog`);
     return response.data;
   },
 
-  async getById(id) {
-    const response = await api.get(`${ENDPOINT}/${id}`);
+  async createCatalogItem(data) {
+    const response = await api.post(`${ENDPOINT}/catalog`, data);
     return response.data;
   },
 
-  async create(data) {
-    const response = await api.post(ENDPOINT, data);
+  async deleteCatalogItem(id) {
+    await api.delete(`${ENDPOINT}/catalog/${id}`);
+  },
+
+  // --- Awards (granted achievements) ---
+  async getAwards(filters = {}) {
+    const response = await api.get(ENDPOINT, { params: filters });
     return response.data;
   },
 
-  async update(id, data) {
-    const response = await api.put(`${ENDPOINT}/${id}`, data);
+  async createAward(data) {
+    const response = await api.post(`${ENDPOINT}/award`, data);
     return response.data;
   },
 
-  async delete(id) {
+  async deleteAward(id) {
     await api.delete(`${ENDPOINT}/${id}`);
   },
 };

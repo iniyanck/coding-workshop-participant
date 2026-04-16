@@ -9,6 +9,7 @@ import {
   Menu as MenuIcon, Dashboard as DashboardIcon, People as PeopleIcon,
   Groups as GroupsIcon, EmojiEvents as TrophyIcon, Logout as LogoutIcon,
   Person as PersonIcon, AdminPanelSettings as AdminIcon,
+  CloudSync as SyncIcon,
 } from '@mui/icons-material';
 import authService from '../services/authService';
 
@@ -41,9 +42,9 @@ export default function Layout() {
 
   const roleColors = {
     admin: '#ef4444',
+    hr: '#3b82f6',
     manager: '#f59e0b',
-    contributor: '#3b82f6',
-    viewer: '#6b7280',
+    employee: '#6b7280',
   };
 
   const drawer = (
@@ -102,6 +103,21 @@ export default function Layout() {
               >
                 <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><AdminIcon /></ListItemIcon>
                 <ListItemText primary="User Management" primaryTypographyProps={{ fontWeight: location.pathname === '/users' ? 600 : 400 }} />
+              </ListItemButton>
+            </ListItem>
+            <ListItem disablePadding sx={{ mb: 0.5 }}>
+              <ListItemButton
+                onClick={() => { navigate('/hris-console'); if (isMobile) setMobileOpen(false); }}
+                sx={{
+                  borderRadius: 2,
+                  transition: 'all 0.2s',
+                  bgcolor: location.pathname === '/hris-console' ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
+                  color: location.pathname === '/hris-console' ? '#10b981' : 'text.secondary',
+                  '&:hover': { bgcolor: 'rgba(16, 185, 129, 0.08)', transform: 'translateX(4px)' },
+                }}
+              >
+                <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><SyncIcon /></ListItemIcon>
+                <ListItemText primary="HRIS Console" primaryTypographyProps={{ fontWeight: location.pathname === '/hris-console' ? 600 : 400 }} />
               </ListItemButton>
             </ListItem>
           </>
