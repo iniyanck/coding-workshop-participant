@@ -5,8 +5,8 @@ OUTPUT_FILE="ai_context.xml"
 DIRECTORIES=("backend" "frontend" "infra" "bin")
 
 # 1. EXTENDED TRASH LIST: Ensure regex escapes for dots
-IGNORE_DIRS="node_modules|\.git|\.venv|\.terraform|dist|build|__pycache__|psycopg|jwt|\.pytest_cache|\.dist-info|\.libs"
-IGNORE_FILES="package-lock\.json|yarn\.lock|\.DS_Store|.*\.pyc|.*\.zip|.*\.plan\.json|.*\.(svg|png|jpg|jpeg|ico|gif)"
+IGNORE_DIRS="node_modules|\.git|\.venv|\.terraform|dist|build|__pycache__|psycopg|jwt|pytest|_pytest|pluggy|packaging|iniconfig|pytest_mock|\.pytest_cache|\.dist-info|\.libs"
+IGNORE_FILES="package-lock\.json|yarn\.lock|\.DS_Store|.*\.pyc|.*\.zip|.*\.plan\.json|.*\.(svg|png|jpg|jpeg|ico|gif)|typing_extensions\.py|py\.py"
 
 # 2. SOURCE EXTENSIONS
 EXTENSIONS='py|jsx|js|ts|tsx|tf|sh|yml|yaml|json|md'

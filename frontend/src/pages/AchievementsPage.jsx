@@ -296,7 +296,8 @@ function CatalogTab() {
 
 // --- Awards Tab ---
 
-function AwardsTab() {
+function AwardsTab({ viewMode = 'all' }) {
+  const user = authService.getUser();
   const theme = useTheme();
   const [awards, setAwards] = useState([]);
   const [catalog, setCatalog] = useState([]);
@@ -311,6 +312,7 @@ function AwardsTab() {
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
   const [search, setSearch] = useState('');
   const [filterTeam, setFilterTeam] = useState('');
+  const [filterIndividual, setFilterIndividual] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [selectedAward, setSelectedAward] = useState(null);
@@ -336,10 +338,23 @@ function AwardsTab() {
     }
   };
 
+  // Find the logged-in employee's individual record
+  const currentIndividual = individuals.find(i => i.user_id === user?.id);
+
   const filtered = awards.filter(a => {
     const matchesSearch = !search || `${a.title} ${a.description}`.toLowerCase().includes(search.toLowerCase());
-    const matchesTeam = !filterTeam || a.team_id === filterTeam;
-    return matchesSearch && matchesTeam;
+    const matchesTeamFilter = !filterTeam || a.team_id === filterTeam;
+    const matchesIndFilter = !filterIndividual || a.individual_id === filterIndividual;
+
+    // Apply personal filter if in 'personal' view mode
+    if (viewMode === 'personal') {
+      if (!currentIndividual) return false;
+      const isMyIndividualAward = a.individual_id === currentIndividual.id;
+      const isMyTeamAward = a.team_id && a.team_id === currentIndividual.team_id;
+      return (isMyIndividualAward || isMyTeamAward) && matchesSearch;
+    }
+
+    return matchesSearch && matchesTeamFilter && matchesIndFilter;
   });
 
   const handleOpen = () => {
@@ -418,18 +433,35 @@ function AwardsTab() {
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: 'text.disabled' }} /></InputAdornment> }}
             sx={{ minWidth: 280, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
           />
-          <Autocomplete
-            size="small"
-            options={teams}
-            getOptionLabel={(option) => option.name}
-            value={teams.find(t => t.id === filterTeam) || null}
-            onChange={(e, newValue) => { 
-              setFilterTeam(newValue ? newValue.id : ''); 
-              setPage(0); 
-            }}
-            renderInput={(params) => <TextField {...params} label="Filter by Team" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
-            sx={{ minWidth: 250 }}
-          />
+          {viewMode === 'all' && (
+            <>
+              <Autocomplete
+                size="small"
+                options={teams}
+                getOptionLabel={(option) => `${option.name} (${option.unit_type || 'Team'})`}
+                value={teams.find(t => t.id === filterTeam) || null}
+                onChange={(e, newValue) => { 
+                  setFilterTeam(newValue ? newValue.id : ''); 
+                  setFilterIndividual(''); // Reset individual filter if team changes
+                  setPage(0); 
+                }}
+                renderInput={(params) => <TextField {...params} label="Filter by Team/Org" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+                sx={{ minWidth: 250 }}
+              />
+              <Autocomplete
+                size="small"
+                options={individuals.filter(i => !filterTeam || i.team_id === filterTeam)}
+                getOptionLabel={(option) => `${option.first_name} ${option.last_name}`}
+                value={individuals.find(i => i.id === filterIndividual) || null}
+                onChange={(e, newValue) => {
+                  setFilterIndividual(newValue ? newValue.id : '');
+                  setPage(0);
+                }}
+                renderInput={(params) => <TextField {...params} label="Filter by Individual" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+                sx={{ minWidth: 250 }}
+              />
+            </>
+          )}
         </Box>
 
         {loading ? (
@@ -645,6 +677,9 @@ function AwardsTab() {
 export default function AchievementsPage() {
   const theme = useTheme();
   const [tab, setTab] = useState(0);
+  
+  const user = authService.getUser();
+  const isEmployee = user?.role === 'employee';
 
   return (
     <Box>
@@ -653,7 +688,9 @@ export default function AchievementsPage() {
           <Typography variant="h5" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
             <TrophyIcon sx={{ color: 'warning.main' }} /> Achievements
           </Typography>
-          <Typography variant="body2" color="text.secondary">Manage the achievement catalog and grant awards</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {isEmployee ? "View your personal milestones and company-wide awards" : "Manage the achievement catalog and grant awards"}
+          </Typography>
         </Box>
       </Box>
 
@@ -666,12 +703,22 @@ export default function AchievementsPage() {
             '& .MuiTabs-indicator': { bgcolor: 'warning.main', borderRadius: 2 },
           }}
         >
-          <Tab icon={<CatalogIcon />} iconPosition="start" label="Catalog" />
-          <Tab icon={<AwardIcon />} iconPosition="start" label="Awards" />
+          {/* Admin/Manager/HR see Catalog. Employees see My Awards. */}
+          {isEmployee 
+            ? <Tab icon={<AwardIcon />} iconPosition="start" label="My Awards" />
+            : <Tab icon={<CatalogIcon />} iconPosition="start" label="Catalog" />
+          }
+          
+          <Tab icon={<TrophyIcon />} iconPosition="start" label="Company Awards" />
         </Tabs>
       </Paper>
 
-      {tab === 0 ? <CatalogTab /> : <AwardsTab />}
+      {/* Render the correct component based on role and tab selection */}
+      {isEmployee ? (
+        tab === 0 ? <AwardsTab viewMode="personal" /> : <AwardsTab viewMode="all" />
+      ) : (
+        tab === 0 ? <CatalogTab /> : <AwardsTab viewMode="all" />
+      )}
     </Box>
   );
 }
