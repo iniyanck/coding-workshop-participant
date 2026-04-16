@@ -160,26 +160,9 @@ export default function IndividualsPage() {
         </Box>
       </Box>
 
-      <Alert
-        severity="info"
-        icon={<SyncIcon />}
-        sx={{
-          mb: 3, borderRadius: 2,
-          background: theme.palette.mode === 'light'
-            ? 'linear-gradient(135deg, rgba(102,126,234,0.08) 0%, rgba(118,75,162,0.08) 100%)'
-            : 'linear-gradient(135deg, rgba(129,140,248,0.1) 0%, rgba(167,139,250,0.1) 100%)',
-          border: '1px solid',
-          borderColor: 'divider',
-          '& .MuiAlert-icon': { color: 'primary.main' },
-        }}
-      >
-        <Typography variant="body2" sx={{ fontWeight: 500 }}>
-          This directory is managed by the HRIS system. Records are automatically synced from the external employee database.
-          Use the <strong>HRIS Console</strong> (Admin) to simulate sync operations.
-        </Typography>
-      </Alert>
 
-      <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
+
+      <Paper sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', overflowX: 'hidden' }}>
         <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap', borderBottom: '1px solid', borderColor: 'divider' }}>
           <TextField size="small" placeholder="Search by ID, name, email..." value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
@@ -201,8 +184,8 @@ export default function IndividualsPage() {
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress /></Box>
         ) : (
           <>
-            <TableContainer>
-              <Table>
+            <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
+              <Table sx={{ minWidth: 600 }}>
                 <TableHead>
                   <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                     <TableCell>Employee ID</TableCell>

@@ -4,7 +4,7 @@ import {
   TableHead, TableRow, Paper, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, Snackbar, Alert, Chip, CircularProgress,
   FormControl, InputLabel, Select, MenuItem, Tooltip, InputAdornment,
-  TablePagination, useTheme,
+  TablePagination, useTheme, Autocomplete,
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
@@ -18,7 +18,7 @@ import TeamMap from '../components/TeamMap';
 import { geocodeLocation } from '../utils/geocode';
 import MapIcon from '@mui/icons-material/Map';
 
-const EMPTY_FORM = { name: '', unit_type: 'Team', description: '', location: '', leader_id: '', org_leader_id: '', parent_team_id: '' };
+const EMPTY_FORM = { name: '', unit_type: 'Team', description: '', location: '', leader_id: '', org_leader_id: '', parent_team_id: '', members: [] };
 
 export default function TeamsPage() {
   const theme = useTheme();
@@ -60,10 +60,12 @@ export default function TeamsPage() {
 
   const handleOpen = (team = null) => {
     if (team) {
+      const currentMembers = individuals.filter(i => i.team_id === team.id).map(i => i.id);
       setEditingId(team.id);
       setForm({
         name: team.name || '', unit_type: team.unit_type || 'Team', description: team.description || '', location: team.location || '',
         leader_id: team.leader_id || '', org_leader_id: team.org_leader_id || '', parent_team_id: team.parent_team_id || '',
+        members: currentMembers
       });
     } else {
       setEditingId(null);
@@ -93,21 +95,43 @@ export default function TeamsPage() {
         lng = coords.lng;
       }
 
+      const { members, ...teamData } = form;
       const data = {
-        ...form,
+        ...teamData,
         location_lat: lat,
         location_lng: lng,
-        leader_id: form.leader_id || null,
-        org_leader_id: form.org_leader_id || null,
-        parent_team_id: form.parent_team_id || null,
+        leader_id: teamData.leader_id || null,
+        org_leader_id: teamData.org_leader_id || null,
+        parent_team_id: teamData.parent_team_id || null,
       };
+
+      let savedTeamId = editingId;
       if (editingId) {
         await teamsService.update(editingId, data);
-        showSnack('Team updated successfully');
       } else {
-        await teamsService.create(data);
-        showSnack('Team created successfully');
+        const newTeam = await teamsService.create(data);
+        savedTeamId = newTeam.id;
       }
+
+      // Process Member Additions / Removals
+      const oldMembers = editingId ? individuals.filter(i => i.team_id === savedTeamId).map(i => i.id) : [];
+      const newMembers = form.members;
+      
+      const toAdd = newMembers.filter(id => !oldMembers.includes(id));
+      const toRemove = oldMembers.filter(id => !newMembers.includes(id));
+
+      await Promise.all([
+        ...toAdd.map(id => {
+          const person = individuals.find(i => i.id === id);
+          return individualsService.update(id, { ...person, team_id: savedTeamId });
+        }),
+        ...toRemove.map(id => {
+          const person = individuals.find(i => i.id === id);
+          return individualsService.update(id, { ...person, team_id: null });
+        })
+      ]);
+
+      showSnack(editingId ? 'Team updated successfully' : 'Team created successfully');
       setDialogOpen(false);
       loadData();
     } catch (err) {
@@ -160,7 +184,7 @@ export default function TeamsPage() {
         )}
       </Box>
 
-      <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
+      <Paper sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', overflowX: 'hidden' }}>
         <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
           <TextField size="small" placeholder="Search teams..." value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
@@ -173,8 +197,8 @@ export default function TeamsPage() {
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress /></Box>
         ) : (
           <>
-            <TableContainer>
-              <Table>
+            <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
+              <Table sx={{ minWidth: 600 }}>
                 <TableHead>
                   <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                     <TableCell>Team Name</TableCell>
@@ -265,32 +289,40 @@ export default function TeamsPage() {
         )}
       </Paper>
 
-      {selectedTeam && (
-        <Paper sx={{ mt: 4, p: 3, borderRadius: 3, animation: 'fadeIn 0.5s ease-out' }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <MapIcon sx={{ color: 'primary.main' }} /> Team Distribution: {selectedTeam.name}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Visualizing {individuals.filter(i => i.team_id === selectedTeam.id).length} team members
-              </Typography>
-            </Box>
-            <Button size="small" onClick={() => setSelectedTeam(null)} sx={{ textTransform: 'none' }}>Close Map</Button>
-          </Box>
-          <TeamMap 
-            individuals={individuals.filter(i => i.team_id === selectedTeam.id)} 
-            teamInfo={selectedTeam} 
-          />
-        </Paper>
-      )}
-
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
+      {/* Replace the Paper block starting with {selectedTeam && ( */}
+      <Dialog 
+        open={!!selectedTeam} 
+        onClose={() => setSelectedTeam(null)} 
+        maxWidth="lg" 
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3, height: '80vh' } }}
+      >
+        {selectedTeam && (
+          <>
+            <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 1 }}>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <MapIcon sx={{ color: 'primary.main' }} /> Team Distribution: {selectedTeam.name}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Visualizing {individuals.filter(i => i.team_id === selectedTeam.id).length} team members
+                </Typography>
+              </Box>
+            </DialogTitle>
+            <DialogContent dividers sx={{ p: 0 }}>
+              <TeamMap 
+                individuals={individuals.filter(i => i.team_id === selectedTeam.id)} 
+                teamInfo={selectedTeam} 
+              />
+            </DialogContent>
+            <DialogActions sx={{ px: 3, py: 2 }}>
+              <Button onClick={() => setSelectedTeam(null)} variant="contained" sx={{ borderRadius: 2 }}>
+                Close Map
+              </Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 700 }}>{editingId ? 'Edit Team' : 'Add Team'}</DialogTitle>
@@ -321,26 +353,22 @@ export default function TeamsPage() {
             sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
           />
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>
-            <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
-              <InputLabel>Team Leader</InputLabel>
-              <Select value={form.leader_id} label="Team Leader"
-                onChange={(e) => setForm({ ...form, leader_id: e.target.value })}
-              >
-                <MenuItem value="">None</MenuItem>
-                {individuals.map(i => <MenuItem key={i.id} value={i.id}>{i.first_name} {i.last_name}</MenuItem>)}
-              </Select>
-            </FormControl>
-            <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
-              <InputLabel>Org Leader</InputLabel>
-              <Select value={form.org_leader_id} label="Org Leader"
-                onChange={(e) => setForm({ ...form, org_leader_id: e.target.value })}
-              >
-                <MenuItem value="">None</MenuItem>
-                {individuals.map(i => <MenuItem key={i.id} value={i.id}>{i.first_name} {i.last_name}</MenuItem>)}
-              </Select>
-            </FormControl>
+            <Autocomplete
+              options={individuals}
+              getOptionLabel={(option) => `${option.first_name} ${option.last_name} (${option.employee_id})`}
+              value={individuals.find(i => i.id === form.leader_id) || null}
+              onChange={(e, newValue) => setForm({ ...form, leader_id: newValue ? newValue.id : '' })}
+              renderInput={(params) => <TextField {...params} label="Team Leader" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+            />
+            <Autocomplete
+              options={individuals}
+              getOptionLabel={(option) => `${option.first_name} ${option.last_name} (${option.employee_id})`}
+              value={individuals.find(i => i.id === form.org_leader_id) || null}
+              onChange={(e, newValue) => setForm({ ...form, org_leader_id: newValue ? newValue.id : '' })}
+              renderInput={(params) => <TextField {...params} label="Org Leader" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+            />
           </Box>
-          <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
+          <FormControl fullWidth sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
             <InputLabel>Parent Unit</InputLabel>
             <Select value={form.parent_team_id} label="Parent Unit"
               onChange={(e) => setForm({ ...form, parent_team_id: e.target.value })}
@@ -349,6 +377,34 @@ export default function TeamsPage() {
               {teams.filter(t => t.id !== editingId).map(t => <MenuItem key={t.id} value={t.id}>{t.name} ({t.unit_type || 'Team'})</MenuItem>)}
             </Select>
           </FormControl>
+          <Autocomplete
+            multiple
+            options={individuals}
+            getOptionLabel={(option) => `${option.first_name} ${option.last_name}`}
+            value={individuals.filter(i => form.members.includes(i.id))}
+            onChange={(e, newValue) => {
+              const newMembers = newValue.map(v => v.id);
+              
+              // Calculate majority location
+              const locs = newValue.map(v => v.location).filter(Boolean);
+              let majorityLoc = '';
+              if (locs.length > 0) {
+                const counts = locs.reduce((acc, loc) => { 
+                  acc[loc] = (acc[loc] || 0) + 1; 
+                  return acc; 
+                }, {});
+                majorityLoc = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
+              }
+
+              // Update form state: auto-fill location if it's currently empty
+              setForm(prev => ({ 
+                ...prev, 
+                members: newMembers,
+                location: prev.location.trim() === '' ? majorityLoc : prev.location
+              }));
+            }}
+            renderInput={(params) => <TextField {...params} label="Team Members" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+          />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDialogOpen(false)} sx={{ borderRadius: 2 }}>Cancel</Button>

@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import Map, { Marker, Popup, NavigationControl } from 'react-map-gl/maplibre';
+import React, { useState, useMemo, useRef } from 'react';
+import Map, { Marker, Popup, NavigationControl, useMap } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Typography, Box, Paper, useTheme } from '@mui/material';
 import PersonPinCircleIcon from '@mui/icons-material/PersonPinCircle';
@@ -8,6 +8,7 @@ import StarIcon from '@mui/icons-material/Star';
 const TeamMap = ({ individuals, teamInfo }) => {
   const theme = useTheme();
   const [selectedPerson, setSelectedPerson] = useState(null);
+  const mapRef = useRef(null);
 
   const getMarkerStyle = (person) => {
     const isLeader = person.id === teamInfo?.leader_id || person.id === teamInfo?.org_leader_id;
@@ -20,20 +21,38 @@ const TeamMap = ({ individuals, teamInfo }) => {
     return individuals.filter(p => p.location_lat != null && p.location_lng != null);
   }, [individuals]);
 
-  // Apply a tiny random positional offset to spread out markers that land on the exact same city
-  const jitteredIndividuals = useMemo(() => {
-    const seen = {};
-    return mappableIndividuals.map(p => {
-        const key = `${p.location_lat},${p.location_lng}`;
-        if (seen[key]) {
-            const offsetLat = (Math.random() - 0.5) * 0.05;
-            const offsetLng = (Math.random() - 0.5) * 0.05;
-            seen[key] += 1;
-            return { ...p, location_lat: p.location_lat + offsetLat, location_lng: p.location_lng + offsetLng };
-        }
-        seen[key] = 1;
-        return p;
+  const griddedIndividuals = useMemo(() => {
+    const grouped = {};
+    
+    // Group people by exact coordinates
+    mappableIndividuals.forEach(p => {
+      const key = `${p.location_lat},${p.location_lng}`;
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(p);
     });
+
+    const result = [];
+    const offsetStep = 0.00015; // Roughly 15 meters separation
+
+    Object.values(grouped).forEach(group => {
+      const cols = Math.ceil(Math.sqrt(group.length));
+      group.forEach((p, idx) => {
+        const row = Math.floor(idx / cols);
+        const col = idx % cols;
+        
+        // Center the grid over the original coordinate
+        const rowOffset = (row - (cols - 1) / 2) * offsetStep;
+        const colOffset = (col - (cols - 1) / 2) * offsetStep;
+        
+        result.push({ 
+          ...p, 
+          location_lat: p.location_lat + rowOffset, 
+          location_lng: p.location_lng + colOffset 
+        });
+      });
+    });
+    
+    return result;
   }, [mappableIndividuals]);
 
   const viewState = useMemo(() => {
@@ -83,13 +102,39 @@ const TeamMap = ({ individuals, teamInfo }) => {
       borderColor: 'divider',
       boxShadow: theme.palette.mode === 'light' ? '0 10px 30px rgba(0,0,0,0.1)' : '0 10px 30px rgba(0,0,0,0.4)' 
     }}>
+      {/* Global override for MapLibre popups */}
+      <style>{`
+        .maplibregl-popup-content {
+          background-color: ${theme.palette.background.paper};
+          color: ${theme.palette.text.primary};
+          border-radius: 8px;
+          box-shadow: ${theme.palette.mode === 'dark' ? '0 4px 20px rgba(0,0,0,0.5)' : '0 4px 14px rgba(0,0,0,0.1)'};
+          padding: 16px 24px 16px 16px;
+        }
+        .maplibregl-popup-close-button {
+          color: ${theme.palette.text.secondary};
+          font-size: 16px;
+          right: 6px;
+          top: 6px;
+          border-radius: 4px;
+        }
+        .maplibregl-popup-close-button:hover {
+          background-color: ${theme.palette.action.hover};
+        }
+        .maplibregl-popup-tip {
+          border-top-color: ${theme.palette.background.paper} !important;
+          border-bottom-color: ${theme.palette.background.paper} !important;
+        }
+      `}</style>
+
       <Map
+        ref={mapRef}
         initialViewState={viewState}
         mapStyle={mapStyle}
       >
         <NavigationControl position="top-right" />
 
-        {jitteredIndividuals.map(person => (
+        {griddedIndividuals.map(person => (
           <Marker 
             key={person.id} 
             longitude={person.location_lng} 
@@ -100,7 +145,14 @@ const TeamMap = ({ individuals, teamInfo }) => {
               setSelectedPerson(person);
             }}
           >
-            <div style={{ cursor: 'pointer', transform: 'translate(0, 5px)', transition: 'transform 0.2s' }}>
+            {/* Add double click handler here */}
+            <div 
+              style={{ cursor: 'pointer', transform: 'translate(0, 5px)', transition: 'transform 0.2s' }}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                mapRef.current?.flyTo({ center: [person.location_lng, person.location_lat], zoom: 18, duration: 800 });
+              }}
+            >
               {getMarkerStyle(person).icon}
             </div>
           </Marker>

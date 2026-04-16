@@ -102,7 +102,7 @@ function CatalogTab() {
         )}
       </Box>
 
-      <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
+      <Paper sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', overflowX: 'hidden' }}>
         <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
           <TextField size="small" placeholder="Search skills..." value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
@@ -115,8 +115,8 @@ function CatalogTab() {
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress /></Box>
         ) : (
           <>
-            <TableContainer>
-              <Table>
+            <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
+              <Table sx={{ minWidth: 600 }}>
                 <TableHead>
                   <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                     <TableCell>Skill Name</TableCell>
@@ -340,12 +340,12 @@ function TeamSkillsTab() {
       ) : (
         <>
           {/* Required Skills List */}
-          <Paper sx={{ borderRadius: 3, overflow: 'hidden', mb: 3 }}>
+          <Paper sx={{ borderRadius: 3, overflow: 'hidden', mb: 3, width: '100%', overflowX: 'hidden' }}>
             <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
               <Typography variant="subtitle1" fontWeight={700}>Required Project Skills</Typography>
             </Box>
-            <TableContainer>
-              <Table>
+            <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
+              <Table sx={{ minWidth: 600 }}>
                 <TableHead>
                   <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                     <TableCell>Skill</TableCell>
@@ -387,7 +387,7 @@ function TeamSkillsTab() {
 
           {/* Gap Analysis */}
           {gapAnalysis.length > 0 && (
-            <Paper sx={{ borderRadius: 3, p: 3 }}>
+            <Paper sx={{ borderRadius: 3, p: 3, width: '100%', overflowX: 'hidden' }}>
               <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <GapIcon sx={{ color: 'warning.main' }} /> Skill Gap Analysis
               </Typography>

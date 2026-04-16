@@ -3,7 +3,7 @@ import {
   Box, Button, Typography, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, Snackbar, Alert, Chip, CircularProgress,
-  Tooltip, Checkbox, FormControlLabel, useTheme,
+  Tooltip, Checkbox, FormControlLabel, useTheme, TablePagination,
 } from '@mui/material';
 import {
   Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon,
@@ -25,6 +25,8 @@ export default function HRISConsolePage() {
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
   // 1. Fetch real data on load for total congruence
   useEffect(() => {
@@ -34,7 +36,8 @@ export default function HRISConsolePage() {
   const loadData = async () => {
     try {
       const data = await individualsService.getAll();
-      setHrisData(data);
+      // Ensure we always set an array to prevent .slice() crashes
+      setHrisData(Array.isArray(data) ? data : []);
     } catch (err) {
       showSnack('Failed to load HRIS data', 'error');
     } finally {
@@ -122,13 +125,13 @@ export default function HRISConsolePage() {
             <StorageIcon sx={{ color: 'success.main' }} /> HRIS Console
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Live integration. Changes here push immediately via webhook to the application.
+            Live integration portal. Source of truth for active employee records.
           </Typography>
         </Box>
       </Box>
 
       {/* HRIS Data Table */}
-      <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
+      <Paper sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', overflowX: 'hidden' }}>
         <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid', borderColor: 'divider' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
@@ -149,8 +152,8 @@ export default function HRISConsolePage() {
           </Button>
         </Box>
 
-        <TableContainer>
-          <Table>
+        <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
+          <Table sx={{ minWidth: 600 }}>
             <TableHead>
               <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                 <TableCell>Employee ID</TableCell>
@@ -169,51 +172,65 @@ export default function HRISConsolePage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                hrisData.map((record, index) => (
-                  <TableRow key={`${record.employee_id}-${index}`} hover sx={{ transition: 'background 0.2s' }}>
-                    <TableCell>
-                      <Chip label={record.employee_id} size="small"
-                        sx={{ borderRadius: 1.5, fontWeight: 600, fontFamily: 'monospace', bgcolor: `${theme.palette.success.main}20`, color: 'success.main' }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="subtitle2" fontWeight={600}>
-                        {record.first_name} {record.last_name}
-                      </Typography>
-                    </TableCell>
-                    <TableCell><Typography variant="body2" color="text.secondary">{record.email}</Typography></TableCell>
-                    <TableCell>
-                      <Typography variant="body2" color="text.secondary">
-                        {record.designation || 'Pending'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip size="small" label={record.is_direct_staff ? 'Direct' : 'Non-Direct'}
-                        sx={{
-                          borderRadius: 1.5, fontWeight: 500, fontSize: '0.7rem',
-                          bgcolor: record.is_direct_staff ? `${theme.palette.primary.main}15` : `${theme.palette.warning.main}15`,
-                          color: record.is_direct_staff ? 'primary.main' : 'warning.main',
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      <Tooltip title="Edit">
-                        <IconButton size="small" onClick={() => handleOpen(index)} sx={{ color: 'primary.main', mr: 0.5 }}>
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Terminate">
-                        <IconButton size="small" onClick={() => handleDelete(index)} sx={{ color: 'error.main' }}>
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
-                ))
+                hrisData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((record, index) => {
+                  if (!record) return null; // Safe guard against null records
+                  const actualIndex = page * rowsPerPage + index; // Use true index
+                  
+                  return (
+                    <TableRow key={`${record.employee_id}-${actualIndex}`} hover sx={{ transition: 'background 0.2s' }}>
+                      <TableCell>
+                        <Chip label={record.employee_id} size="small"
+                          sx={{ borderRadius: 1.5, fontWeight: 600, fontFamily: 'monospace', bgcolor: `${theme.palette.success.main}20`, color: 'success.main' }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="subtitle2" fontWeight={600}>
+                          {record.first_name} {record.last_name}
+                        </Typography>
+                      </TableCell>
+                      <TableCell><Typography variant="body2" color="text.secondary">{record.email}</Typography></TableCell>
+                      <TableCell>
+                        <Typography variant="body2" color="text.secondary">
+                          {record.designation || 'Pending'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip size="small" label={record.is_direct_staff ? 'Direct' : 'Non-Direct'}
+                          sx={{
+                            borderRadius: 1.5, fontWeight: 500, fontSize: '0.7rem',
+                            bgcolor: record.is_direct_staff ? `${theme.palette.primary.main}15` : `${theme.palette.warning.main}15`,
+                            color: record.is_direct_staff ? 'primary.main' : 'warning.main',
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <Tooltip title="Edit">
+                          <IconButton size="small" onClick={() => handleOpen(actualIndex)} sx={{ color: 'primary.main', mr: 0.5 }}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete Record">
+                          <IconButton size="small" onClick={() => handleDelete(actualIndex)} sx={{ color: 'error.main' }}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
         </TableContainer>
+        <TablePagination
+          component="div"
+          count={hrisData.length}
+          page={page}
+          rowsPerPage={rowsPerPage}
+          onPageChange={(_, p) => setPage(p)}
+          onRowsPerPageChange={(e) => { setRowsPerPage(+e.target.value); setPage(0); }}
+          rowsPerPageOptions={[5, 10, 25, 50]}
+        />
       </Paper>
 
       {/* Add/Edit Dialog */}

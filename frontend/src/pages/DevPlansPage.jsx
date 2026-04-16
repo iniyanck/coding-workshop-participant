@@ -3,7 +3,7 @@ import {
   Box, Button, Typography, Paper, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, Snackbar, Alert, Chip, CircularProgress,
   FormControl, InputLabel, Select, MenuItem, Tooltip, LinearProgress,
-  Accordion, AccordionSummary, AccordionDetails, Checkbox, Divider, useTheme,
+  Accordion, AccordionSummary, AccordionDetails, Checkbox, Divider, useTheme, Autocomplete,
 } from '@mui/material';
 import {
   Add as AddIcon, Delete as DeleteIcon, ExpandMore as ExpandIcon,
@@ -245,15 +245,15 @@ export default function DevPlansPage() {
       {/* Filter */}
       {role !== 'employee' && (
         <Box sx={{ mb: 3 }}>
-          <FormControl size="small" sx={{ minWidth: 250, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
-            <InputLabel>Filter by Employee</InputLabel>
-            <Select value={filterIndividual} label="Filter by Employee"
-              onChange={(e) => setFilterIndividual(e.target.value)}
-            >
-              <MenuItem value="">All Employees</MenuItem>
-              {individuals.map(i => <MenuItem key={i.id} value={i.id}>{i.first_name} {i.last_name}</MenuItem>)}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            size="small"
+            options={individuals}
+            getOptionLabel={(option) => `${option.first_name} ${option.last_name}`}
+            value={individuals.find(i => i.id === filterIndividual) || null}
+            onChange={(e, newValue) => setFilterIndividual(newValue ? newValue.id : '')}
+            renderInput={(params) => <TextField {...params} label="Filter by Employee" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+            sx={{ minWidth: 250 }}
+          />
         </Box>
       )}
 
@@ -392,15 +392,15 @@ export default function DevPlansPage() {
       <Dialog open={planDialogOpen} onClose={() => setPlanDialogOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 700 }}>{editingPlan ? 'Edit Plan' : 'New Development Plan'}</DialogTitle>
         <DialogContent sx={{ pt: '16px !important' }}>
-          <FormControl fullWidth sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
-            <InputLabel>Employee *</InputLabel>
-            <Select value={planForm.individual_id} label="Employee *"
-              onChange={(e) => setPlanForm({ ...planForm, individual_id: e.target.value })}
-              disabled={!!editingPlan}
-            >
-              {individuals.map(i => <MenuItem key={i.id} value={i.id}>{i.first_name} {i.last_name}</MenuItem>)}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            options={individuals}
+            getOptionLabel={(option) => `${option.first_name} ${option.last_name} (${option.employee_id})`}
+            value={individuals.find(i => i.id === planForm.individual_id) || null}
+            onChange={(e, newValue) => setPlanForm({ ...planForm, individual_id: newValue ? newValue.id : '' })}
+            disabled={!!editingPlan}
+            renderInput={(params) => <TextField {...params} label="Employee *" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+            sx={{ mb: 2 }}
+          />
           <TextField fullWidth label="Plan Title *" value={planForm.title}
             onChange={(e) => setPlanForm({ ...planForm, title: e.target.value })}
             sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}

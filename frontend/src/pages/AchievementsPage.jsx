@@ -4,7 +4,7 @@ import {
   TableHead, TableRow, Paper, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, Snackbar, Alert, Chip, CircularProgress,
   FormControl, InputLabel, Select, MenuItem, Tooltip, InputAdornment,
-  TablePagination, Tabs, Tab, useTheme,
+  TablePagination, Tabs, Tab, useTheme, Autocomplete,
 } from '@mui/material';
 import {
   Add as AddIcon, Delete as DeleteIcon,
@@ -102,7 +102,7 @@ function CatalogTab() {
         )}
       </Box>
 
-      <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
+      <Paper sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', overflowX: 'hidden' }}>
         <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
           <TextField size="small" placeholder="Search catalog..." value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
@@ -115,8 +115,8 @@ function CatalogTab() {
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress /></Box>
         ) : (
           <>
-            <TableContainer>
-              <Table>
+            <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
+              <Table sx={{ minWidth: 600 }}>
                 <TableHead>
                   <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                     <TableCell>Title</TableCell>
@@ -370,7 +370,7 @@ function AwardsTab() {
         )}
       </Box>
 
-      <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
+      <Paper sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', overflowX: 'hidden' }}>
         <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap', borderBottom: '1px solid', borderColor: 'divider' }}>
           <TextField size="small" placeholder="Search awards..." value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
@@ -392,8 +392,8 @@ function AwardsTab() {
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress /></Box>
         ) : (
           <>
-            <TableContainer>
-              <Table>
+            <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
+              <Table sx={{ minWidth: 800 }}>
                 <TableHead>
                   <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                     <TableCell>Achievement</TableCell>
@@ -487,27 +487,22 @@ function AwardsTab() {
           </FormControl>
 
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>
-            <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
-              <InputLabel>Team</InputLabel>
-              <Select value={form.team_id} label="Team"
-                onChange={(e) => setForm({ ...form, team_id: e.target.value })}
-                error={!!errors.team_id}
-                disabled={catalog.find(c => c.id === form.catalog_id)?.scope === 'individual'}
-              >
-                <MenuItem value="">None</MenuItem>
-                {teams.map(t => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
-              </Select>
-            </FormControl>
-            <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
-              <InputLabel>Individual</InputLabel>
-              <Select value={form.individual_id} label="Individual"
-                onChange={(e) => setForm({ ...form, individual_id: e.target.value })}
-                disabled={['team', 'department', 'division'].includes(catalog.find(c => c.id === form.catalog_id)?.scope)}
-              >
-                <MenuItem value="">None</MenuItem>
-                {individuals.map(i => <MenuItem key={i.id} value={i.id}>{i.first_name} {i.last_name}</MenuItem>)}
-              </Select>
-            </FormControl>
+            <Autocomplete
+              options={teams}
+              getOptionLabel={(option) => option.name}
+              value={teams.find(t => t.id === form.team_id) || null}
+              onChange={(e, newValue) => setForm({ ...form, team_id: newValue ? newValue.id : '' })}
+              disabled={catalog.find(c => c.id === form.catalog_id)?.scope === 'individual'}
+              renderInput={(params) => <TextField {...params} label="Team" error={!!errors.team_id} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+            />
+            <Autocomplete
+              options={individuals}
+              getOptionLabel={(option) => `${option.first_name} ${option.last_name} (${option.employee_id})`}
+              value={individuals.find(i => i.id === form.individual_id) || null}
+              onChange={(e, newValue) => setForm({ ...form, individual_id: newValue ? newValue.id : '' })}
+              disabled={['team', 'department', 'division'].includes(catalog.find(c => c.id === form.catalog_id)?.scope)}
+              renderInput={(params) => <TextField {...params} label="Individual" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+            />
           </Box>
           {errors.team_id && <Typography variant="caption" color="error" sx={{ ml: 1.5, mt: -1, mb: 1, display: 'block' }}>{errors.team_id}</Typography>}
 

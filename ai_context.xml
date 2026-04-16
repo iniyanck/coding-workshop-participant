@@ -51,6 +51,9 @@ backend
  |-- | |function.py
  |-- | |db.py
  |notification-service
+ |seed-service
+ |-- | |requirements.txt
+ |-- | |function.py
  |devplans-service
  |-- | |requirements.txt
  |-- | |function.py
@@ -783,16 +786,16 @@ def handler(event=None, context=None):
         return {"statusCode": 500, "body": json.dumps({"error": "Sync failed"})}
 
 def fetch_from_hris():
-    """Mock HRIS API Response"""
+    """Mock HRIS API Response with Map-Ready Coordinates"""
     return [
-        {
-            "employee_id": "EMP-001",
-            "email": "jdoe@acme.com",
-            "first_name": "John",
-            "last_name": "Doe",
-            "is_direct_staff": True
-        },
-        # Add more mock records as needed for testing
+        { "employee_id": 'EMP-001', "email": 'admin@acme.com', "first_name": 'Admin', "last_name": 'User', "is_direct_staff": True, "designation": 'Director of IT', "location": 'San Francisco, CA', "location_lat": 37.7749, "location_lng": -122.4194 },
+        { "employee_id": 'EMP-002', "email": 'jdoe@acme.com', "first_name": 'John', "last_name": 'Doe', "is_direct_staff": True, "designation": 'Engineering Manager', "location": 'New York, NY', "location_lat": 40.7128, "location_lng": -74.0060 },
+        { "employee_id": 'EMP-003', "email": 'jsmith@acme.com', "first_name": 'Jane', "last_name": 'Smith', "is_direct_staff": True, "designation": 'HR Business Partner', "location": 'London, UK', "location_lat": 51.5074, "location_lng": -0.1278 },
+        { "employee_id": 'EMP-004', "email": 'mbrown@acme.com', "first_name": 'Michael', "last_name": 'Brown', "is_direct_staff": False, "designation": 'Software Engineer', "location": 'Austin, TX', "location_lat": 30.2672, "location_lng": -97.7431 },
+        { "employee_id": 'EMP-005', "email": 'swilson@acme.com', "first_name": 'Sarah', "last_name": 'Wilson', "is_direct_staff": True, "designation": 'Product Designer', "location": 'Seattle, WA', "location_lat": 47.6062, "location_lng": -122.3321 },
+        { "employee_id": 'EMP-006', "email": 'dlee@acme.com', "first_name": 'David', "last_name": 'Lee', "is_direct_staff": False, "designation": 'Data Analyst', "location": 'Chicago, IL', "location_lat": 41.8781, "location_lng": -87.6298 },
+        { "employee_id": 'EMP-007', "email": 'egarcia@acme.com', "first_name": 'Emily', "last_name": 'Garcia', "is_direct_staff": True, "designation": 'Account Executive', "location": 'Miami, FL', "location_lat": 25.7617, "location_lng": -80.1918 },
+        { "employee_id": 'EMP-008', "email": 'rjohnson@acme.com', "first_name": 'Robert', "last_name": 'Johnson', "is_direct_staff": True, "designation": 'Customer Support Lead', "location": 'Toronto, ON', "location_lat": 43.6510, "location_lng": -79.3470 }
     ]
 
 if __name__ == "__main__":
@@ -2215,6 +2218,8 @@ def handler(event=None, context=None):
                 return handle_jit_link(body)
             elif path.endswith("/sync"):
                 return handle_hris_sync()
+            elif path.endswith("/webhook"):
+                return handle_hris_webhook(body)
             return handle_create(body)
         elif method == "GET":
             if path.endswith("/lookup"):
@@ -2296,6 +2301,30 @@ def handle_hris_sync():
     except Exception as e:
         logger.error(f"HRIS sync failed: {str(e)}")
         return response(500, {"error": "HRIS sync failed", "message": str(e)})
+
+def handle_hris_webhook(body):
+    """Handle POST /api/individuals-service/webhook"""
+    action = body.get("action")
+    
+    if action == "upsert":
+        data = body.get("data", {})
+        if not data.get("employee_id"):
+            return response(400, {"error": "employee_id required"})
+        
+        from db import upsert_single_individual
+        upsert_single_individual(PG_CONFIG, data)
+        return response(200, {"message": "Record successfully synced to application"})
+        
+    elif action == "delete":
+        emp_id = body.get("employee_id")
+        if not emp_id:
+            return response(400, {"error": "employee_id required"})
+            
+        from db import deactivate_single_individual
+        deactivate_single_individual(PG_CONFIG, emp_id)
+        return response(200, {"message": "Record deactivated in application"})
+        
+    return response(400, {"error": "Invalid webhook action"})
 
 def get_user_from_event(event):
     """Extract and decode user from Authorization header."""
@@ -2420,17 +2449,19 @@ if not IS_LOCAL:
     PG_CONFIG += " sslmode=require"
 
 INITIAL_HRIS_DATA = [
-  { "employee_id": 'EMP-001', "email": 'admin@acme.com', "first_name": 'Admin', "last_name": 'User', "is_direct_staff": True },
-  { "employee_id": 'EMP-002', "email": 'jdoe@acme.com', "first_name": 'John', "last_name": 'Doe', "is_direct_staff": True },
-  { "employee_id": 'EMP-003', "email": 'jsmith@acme.com', "first_name": 'Jane', "last_name": 'Smith', "is_direct_staff": True },
-  { "employee_id": 'EMP-004', "email": 'mbrown@acme.com', "first_name": 'Michael', "last_name": 'Brown', "is_direct_staff": False },
-  { "employee_id": 'EMP-005', "email": 'swilson@acme.com', "first_name": 'Sarah', "last_name": 'Wilson', "is_direct_staff": True },
-  { "employee_id": 'EMP-006', "email": 'dlee@acme.com', "first_name": 'David', "last_name": 'Lee', "is_direct_staff": False },
-  { "employee_id": 'EMP-007', "email": 'egarcia@acme.com', "first_name": 'Emily', "last_name": 'Garcia', "is_direct_staff": True },
-  { "employee_id": 'EMP-008', "email": 'rjohnson@acme.com', "first_name": 'Robert', "last_name": 'Johnson', "is_direct_staff": True },
+    { "employee_id": 'EMP-001', "email": 'admin@acme.com', "first_name": 'Admin', "last_name": 'User', "is_direct_staff": True, "designation": 'Director of IT', "location": 'San Francisco, CA', "location_lat": 37.7749, "location_lng": -122.4194 },
+    { "employee_id": 'EMP-002', "email": 'jdoe@acme.com', "first_name": 'John', "last_name": 'Doe', "is_direct_staff": True, "designation": 'Engineering Manager', "location": 'New York, NY', "location_lat": 40.7128, "location_lng": -74.0060 },
+    { "employee_id": 'EMP-003', "email": 'jsmith@acme.com', "first_name": 'Jane', "last_name": 'Smith', "is_direct_staff": True, "designation": 'HR Business Partner', "location": 'London, UK', "location_lat": 51.5074, "location_lng": -0.1278 },
+    { "employee_id": 'EMP-004', "email": 'mbrown@acme.com', "first_name": 'Michael', "last_name": 'Brown', "is_direct_staff": False, "designation": 'Software Engineer', "location": 'Austin, TX', "location_lat": 30.2672, "location_lng": -97.7431 },
+    { "employee_id": 'EMP-005', "email": 'swilson@acme.com', "first_name": 'Sarah', "last_name": 'Wilson', "is_direct_staff": True, "designation": 'Product Designer', "location": 'Seattle, WA', "location_lat": 47.6062, "location_lng": -122.3321 },
+    { "employee_id": 'EMP-006', "email": 'dlee@acme.com', "first_name": 'David', "last_name": 'Lee', "is_direct_staff": False, "designation": 'Data Analyst', "location": 'Chicago, IL', "location_lat": 41.8781, "location_lng": -87.6298 },
+    { "employee_id": 'EMP-007', "email": 'egarcia@acme.com', "first_name": 'Emily', "last_name": 'Garcia', "is_direct_staff": True, "designation": 'Account Executive', "location": 'Miami, FL', "location_lat": 25.7617, "location_lng": -80.1918 },
+    { "employee_id": 'EMP-008', "email": 'rjohnson@acme.com', "first_name": 'Robert', "last_name": 'Johnson', "is_direct_staff": True, "designation": 'Customer Support Lead', "location": 'Toronto, ON', "location_lat": 43.6510, "location_lng": -79.3470 }
 ]
 
 try:
+    from db import init_table
+    init_table(PG_CONFIG)
     bulk_upsert_individuals(PG_CONFIG, INITIAL_HRIS_DATA)
     print("Success")
 except Exception as e:
@@ -2516,8 +2547,9 @@ def bulk_upsert_individuals(config, individuals_data):
                        is_direct_staff = EXCLUDED.is_direct_staff,
                        is_active = true,
                        location = EXCLUDED.location,
-                       location_lat = EXCLUDED.location_lat,
-                       location_lng = EXCLUDED.location_lng,
+                       -- SMART COALESCE: Only overwrite if the new data provides lat/lng, OR if the location string changed
+                       location_lat = COALESCE(EXCLUDED.location_lat, CASE WHEN EXCLUDED.location = individuals.location THEN individuals.location_lat ELSE NULL END),
+                       location_lng = COALESCE(EXCLUDED.location_lng, CASE WHEN EXCLUDED.location = individuals.location THEN individuals.location_lng ELSE NULL END),
                        updated_at = CURRENT_TIMESTAMP""",
                 (
                     data["employee_id"],
@@ -2533,6 +2565,38 @@ def bulk_upsert_individuals(config, individuals_data):
                 )
             )
     return True
+
+# --- NEW WEBHOOK FUNCTIONS ---
+def upsert_single_individual(config, data):
+    """Real-time upsert from HRIS webhook."""
+    conn = get_connection(config)
+    with conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO individuals (employee_id, email, first_name, last_name, designation, is_direct_staff, is_active, location, location_lat, location_lng)
+               VALUES (%s, %s, %s, %s, %s, %s, true, %s, %s, %s)
+               ON CONFLICT (employee_id) DO UPDATE SET
+                   email = EXCLUDED.email,
+                   first_name = EXCLUDED.first_name,
+                   last_name = EXCLUDED.last_name,
+                   designation = EXCLUDED.designation,
+                   is_direct_staff = EXCLUDED.is_direct_staff,
+                   is_active = true,
+                   location = EXCLUDED.location,
+                   location_lat = EXCLUDED.location_lat,
+                   location_lng = EXCLUDED.location_lng,
+                   updated_at = CURRENT_TIMESTAMP""",
+            (
+                data["employee_id"], data.get("email"), data["first_name"], data["last_name"],
+                data.get("designation"), data.get("is_direct_staff", True),
+                data.get("location"), data.get("location_lat"), data.get("location_lng")
+            )
+        )
+
+def deactivate_single_individual(config, employee_id):
+    """Real-time termination/deletion from HRIS webhook."""
+    conn = get_connection(config)
+    with conn.cursor() as cur:
+        cur.execute("UPDATE individuals SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE employee_id = %s", (employee_id,))
 
 def link_user_by_email(config, email, user_id):
     """Attach a user_id to an individual record matching the email."""
@@ -3246,6 +3310,381 @@ def row_to_dict_individual_skill_joined(row):
     d["skill_name"] = row[7]
     d["category"] = row[8]
     return d
+    </file>
+    <file path="backend/seed-service/function.py">
+import os
+import random
+import hashlib
+import secrets
+import json
+import logging
+from psycopg import connect
+
+# Configure logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+PG_CONFIG = (
+    f"host={os.getenv('POSTGRES_HOST')} "
+    f"port={os.getenv('POSTGRES_PORT', '5432')} "
+    f"user={os.getenv('POSTGRES_USER')} "
+    f"password={os.getenv('POSTGRES_PASS')} "
+    f"dbname={os.getenv('POSTGRES_NAME')} "
+    f"connect_timeout=15"
+)
+if "rds.amazonaws.com" in PG_CONFIG:
+    PG_CONFIG += " sslmode=require"
+
+def hash_password(password):
+    salt = secrets.token_hex(16)
+    hashed = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
+    return f"{salt}:{hashed}"
+
+FIRST_NAMES = ["James", "Mary", "Robert", "Patricia", "John", "Jennifer", "Michael", "Linda", "David", "Elizabeth", "William", "Barbara", "Richard", "Susan", "Joseph", "Jessica", "Thomas", "Sarah", "Charles", "Karen", "Christopher", "Nancy", "Daniel", "Lisa", "Matthew", "Betty", "Anthony", "Margaret", "Mark", "Sandra", "Alex", "Morgan", "Elena", "Marcus", "Sarah", "David", "Sam", "Taylor", "Jordan", "Casey"]
+LAST_NAMES = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin", "Lee", "Perez", "Thompson", "White", "Harris", "Sanchez", "Clark", "Ramirez", "Lewis", "Robinson", "Walker", "Young", "Allen", "King", "Wright", "Scott", "Torres", "Nguyen", "Hill", "Flores", "Green", "Adams", "Nelson", "Baker", "Hall", "Rivera", "Campbell", "Mitchell", "Carter", "Roberts", "Mercer", "Chen", "Kim", "Jenkins"]
+
+LOCATIONS = {
+    "New York, NY": (40.7128, -74.0060),
+    "San Francisco, CA": (37.7749, -122.4194),
+    "London, UK": (51.5074, -0.1278),
+    "Austin, TX": (30.2672, -97.7431),
+    "Remote": (None, None),
+    "Toronto, ON": (43.6510, -79.3470),
+    "Berlin, DE": (52.5200, 13.4050)
+}
+
+SKILLS_DEF = [
+    ("React Development", "Technical", "Frontend UI framework"),
+    ("System Design", "Technical", "Architecting scalable systems"),
+    ("Python", "Technical", "Backend and scripting"),
+    ("Negotiation", "Communication", "Closing enterprise deals"),
+    ("CRM Software", "Technical", "Salesforce and HubSpot proficiency"),
+    ("Agile Methodology", "Management", "Scrum and Kanban"),
+    ("Conflict Resolution", "Leadership", "Handling team disputes"),
+    ("Cloud Infrastructure", "Technical", "AWS and Terraform"),
+    ("Data Analysis", "Analytical", "SQL and Tableau"),
+    ("Public Speaking", "Communication", "Presenting to large audiences"),
+]
+
+ACHIEVEMENTS_DEF = [
+    ("Hackathon Champion", "Won the annual company hackathon", "yearly", "team"),
+    ("Employee of the Month", "Outstanding performance and dedication", "monthly", "individual"),
+    ("Quarterly Sales Crusher", "Exceeded quota by 150%", "quarterly", "individual"),
+    ("Safety Certified", "Completed advanced workplace safety", "one-time", "individual"),
+    ("Launch Excellence", "Successfully shipped a major product", "one-time", "team"),
+]
+
+def generate_individuals(count):
+    inds = []
+    for i in range(count):
+        fname = random.choice(FIRST_NAMES)
+        lname = random.choice(LAST_NAMES)
+        loc = random.choice(list(LOCATIONS.keys()))
+        lat, lng = LOCATIONS[loc]
+        
+        inds.append({
+            "employee_id": f"EMP-{1000 + i}",
+            "email": f"{fname.lower()[0]}{lname.lower()}@acme.com",
+            "first_name": fname,
+            "last_name": lname,
+            "is_direct_staff": random.random() > 0.2,
+            "designation": "Employee",
+            "location": loc,
+            "location_lat": lat,
+            "location_lng": lng
+        })
+    return inds
+
+def run_seed():
+    logger.info("Connecting to database...")
+    try:
+        conn = connect(PG_CONFIG, autocommit=True)
+    except Exception as e:
+        logger.error(f"FAILED TO CONNECT: {e}")
+        return {"error": str(e)}
+
+    with conn.cursor() as cur:
+        logger.info("1. Wiping database clean (Nuclear Option)...")
+        cur.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO CURRENT_USER; GRANT ALL ON SCHEMA public TO public;")
+        
+        logger.info("2. Recreating updated schemas...")
+        cur.execute("""
+            CREATE TABLE users (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                username VARCHAR(100) UNIQUE NOT NULL,
+                email VARCHAR(255) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                role VARCHAR(20) DEFAULT 'employee',
+                location VARCHAR(200),
+                location_lat DECIMAL(10, 8),
+                location_lng DECIMAL(11, 8),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            
+            CREATE TABLE teams (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                name VARCHAR(200) NOT NULL,
+                unit_type VARCHAR(20) DEFAULT 'Team',
+                description TEXT,
+                location VARCHAR(200),
+                location_lat DECIMAL(10, 8),
+                location_lng DECIMAL(11, 8),
+                leader_id UUID,
+                org_leader_id UUID,
+                parent_team_id UUID REFERENCES teams(id),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            
+            CREATE TABLE individuals (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID REFERENCES users(id),
+                employee_id VARCHAR(50) UNIQUE NOT NULL,
+                email VARCHAR(255) UNIQUE,
+                first_name VARCHAR(100) NOT NULL,
+                last_name VARCHAR(100) NOT NULL,
+                designation VARCHAR(100),
+                team_id UUID REFERENCES teams(id),
+                is_direct_staff BOOLEAN DEFAULT true,
+                is_active BOOLEAN DEFAULT true,
+                location VARCHAR(200),
+                location_lat DECIMAL(10, 8),
+                location_lng DECIMAL(11, 8),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            
+            CREATE TABLE skills_catalog (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                name VARCHAR(200) UNIQUE NOT NULL,
+                category VARCHAR(100) DEFAULT 'General',
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE team_required_skills (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+                skill_id UUID NOT NULL REFERENCES skills_catalog(id) ON DELETE CASCADE,
+                required_proficiency INT DEFAULT 3,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (team_id, skill_id)
+            );
+
+            CREATE TABLE individual_skills (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                individual_id UUID NOT NULL REFERENCES individuals(id) ON DELETE CASCADE,
+                skill_id UUID NOT NULL REFERENCES skills_catalog(id) ON DELETE CASCADE,
+                proficiency INT DEFAULT 1,
+                assessed_by UUID,
+                assessed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                notes TEXT,
+                UNIQUE (individual_id, skill_id)
+            );
+            
+            CREATE TABLE achievement_catalog (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                title VARCHAR(300) NOT NULL,
+                description TEXT,
+                recurrence VARCHAR(50), 
+                scope VARCHAR(50)  
+            );
+
+            CREATE TABLE achievement_awards (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                catalog_id UUID REFERENCES achievement_catalog(id) ON DELETE CASCADE,
+                team_id UUID REFERENCES teams(id),
+                individual_id UUID REFERENCES individuals(id),
+                awarded_date DATE NOT NULL,
+                location VARCHAR(200),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            
+            CREATE TABLE development_plans (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                individual_id UUID NOT NULL REFERENCES individuals(id),
+                title VARCHAR(300) NOT NULL,
+                description TEXT,
+                status VARCHAR(20) DEFAULT 'draft',
+                target_date DATE,
+                created_by UUID,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE development_plan_items (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                plan_id UUID NOT NULL REFERENCES development_plans(id) ON DELETE CASCADE,
+                description VARCHAR(500) NOT NULL,
+                item_type VARCHAR(30) DEFAULT 'training',
+                status VARCHAR(20) DEFAULT 'not_started',
+                due_date DATE,
+                completed_at TIMESTAMP,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+
+        logger.info("3. Generating Base Individuals (~150)...")
+        raw_inds = generate_individuals(150)
+        
+        raw_inds[0] = {"employee_id": "EMP-0001", "email": "mchen@acme.com", "first_name": "Marcus", "last_name": "Chen", "is_direct_staff": False, "designation": "VP of Engineering", "location": "San Francisco, CA", "location_lat": 37.7749, "location_lng": -122.4194}
+        raw_inds[1] = {"employee_id": "EMP-0002", "email": "sjenkins@acme.com", "first_name": "Sarah", "last_name": "Jenkins", "is_direct_staff": False, "designation": "Chief Revenue Officer", "location": "New York, NY", "location_lat": 40.7128, "location_lng": -74.0060}
+        raw_inds[2] = {"employee_id": "EMP-0003", "email": "amercer@acme.com", "first_name": "Alex", "last_name": "Mercer", "is_direct_staff": True, "designation": "Senior Frontend Engineer", "location": "Austin, TX", "location_lat": 30.2672, "location_lng": -97.7431}
+        raw_inds[3] = {"employee_id": "EMP-0004", "email": "dkim@acme.com", "first_name": "David", "last_name": "Kim", "is_direct_staff": False, "designation": "Core Services Engineering Manager", "location": "London, UK", "location_lat": 51.5074, "location_lng": -0.1278}
+        raw_inds[4] = {"employee_id": "EMP-0005", "email": "erodriguez@acme.com", "first_name": "Elena", "last_name": "Rodriguez", "is_direct_staff": False, "designation": "HR Business Partner", "location": "Berlin, DE", "location_lat": 52.5200, "location_lng": 13.4050}
+        
+        inserted_inds = []
+        for i in raw_inds:
+            try:
+                cur.execute(
+                    "INSERT INTO individuals (employee_id, email, first_name, last_name, is_direct_staff, designation, location, location_lat, location_lng) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id, email, first_name, designation",
+                    (i["employee_id"], i["email"], i["first_name"], i["last_name"], i["is_direct_staff"], i["designation"], i["location"], i.get("location_lat"), i.get("location_lng"))
+                )
+                inserted_inds.append(cur.fetchone())
+            except Exception:
+                pass
+
+        logger.info("4. Creating Users and Linking to Individuals...")
+        admin_hash = hash_password("admin123")
+        cur.execute("INSERT INTO users (username, email, password_hash, role) VALUES ('admin', 'admin@acme.com', %s, 'admin') RETURNING id", (admin_hash,))
+        
+        standard_hash = hash_password("password123")
+        for idx in range(40):
+            ind = inserted_inds[idx]
+            ind_id, ind_email, ind_fname, ind_desig = ind[0], ind[1], ind[2], ind[3]
+            
+            role = 'employee'
+            desig_lower = ind_desig.lower()
+            if "vp" in desig_lower or "chief" in desig_lower: role = 'admin'
+            elif "hr" in desig_lower: role = 'hr'
+            elif "manager" in desig_lower or "lead" in desig_lower: role = 'manager'
+                
+            username = ind_email.split('@')[0]
+            cur.execute(
+                "INSERT INTO users (username, email, password_hash, role) VALUES (%s, %s, %s, %s) RETURNING id",
+                (username, ind_email, standard_hash, role)
+            )
+            user_id = cur.fetchone()[0]
+            cur.execute("UPDATE individuals SET user_id = %s WHERE id = %s", (user_id, ind_id))
+
+        logger.info("5. Building Team Hierarchy...")
+        cur.execute("INSERT INTO teams (name, unit_type, leader_id) VALUES ('Engineering', 'Division', %s) RETURNING id", (inserted_inds[0][0],))
+        eng_div_id = cur.fetchone()[0]
+        cur.execute("INSERT INTO teams (name, unit_type, leader_id) VALUES ('Revenue', 'Division', %s) RETURNING id", (inserted_inds[1][0],))
+        rev_div_id = cur.fetchone()[0]
+        
+        cur.execute("INSERT INTO teams (name, unit_type, parent_team_id) VALUES ('Platform', 'Department', %s) RETURNING id", (eng_div_id,))
+        plat_dept_id = cur.fetchone()[0]
+        cur.execute("INSERT INTO teams (name, unit_type, parent_team_id, leader_id) VALUES ('Core Services', 'Team', %s, %s) RETURNING id", (plat_dept_id, inserted_inds[3][0]))
+        core_team_id = cur.fetchone()[0]
+        cur.execute("INSERT INTO teams (name, unit_type, parent_team_id) VALUES ('Frontend', 'Team', %s) RETURNING id", (plat_dept_id,))
+        frontend_team_id = cur.fetchone()[0]
+        
+        cur.execute("INSERT INTO teams (name, unit_type, parent_team_id) VALUES ('Enterprise Sales', 'Team', %s) RETURNING id", (rev_div_id,))
+        ent_sales_team_id = cur.fetchone()[0]
+        cur.execute("INSERT INTO teams (name, unit_type, parent_team_id) VALUES ('Customer Success', 'Team', %s) RETURNING id", (rev_div_id,))
+        cs_team_id = cur.fetchone()[0]
+
+        team_ids = [eng_div_id, rev_div_id, plat_dept_id, core_team_id, frontend_team_id, ent_sales_team_id, cs_team_id]
+
+        logger.info("6. Assigning Individuals to Teams...")
+        cur.execute("UPDATE individuals SET team_id = %s WHERE id = %s", (frontend_team_id, inserted_inds[2][0]))
+        for ind in inserted_inds[5:]:
+            t_id = random.choice(team_ids)
+            cur.execute("UPDATE individuals SET team_id = %s WHERE id = %s", (t_id, ind[0]))
+            if t_id == ent_sales_team_id:
+                cur.execute("UPDATE individuals SET designation = 'Sales Representative' WHERE id = %s", (ind[0],))
+            elif t_id == core_team_id:
+                cur.execute("UPDATE individuals SET designation = 'Backend Engineer' WHERE id = %s", (ind[0],))
+
+        logger.info("7. Populating Skills Catalog & Team Requirements...")
+        skill_ids = []
+        for s in SKILLS_DEF:
+            cur.execute("INSERT INTO skills_catalog (name, category, description) VALUES (%s, %s, %s) RETURNING id", s)
+            skill_ids.append((cur.fetchone()[0], s[0]))
+
+        neg_id = next(s[0] for s in skill_ids if s[1] == "Negotiation")
+        crm_id = next(s[0] for s in skill_ids if s[1] == "CRM Software")
+        cur.execute("INSERT INTO team_required_skills (team_id, skill_id, required_proficiency) VALUES (%s, %s, 4)", (ent_sales_team_id, neg_id))
+        cur.execute("INSERT INTO team_required_skills (team_id, skill_id, required_proficiency) VALUES (%s, %s, 4)", (ent_sales_team_id, crm_id))
+        
+        react_id = next(s[0] for s in skill_ids if s[1] == "React Development")
+        cur.execute("INSERT INTO team_required_skills (team_id, skill_id, required_proficiency) VALUES (%s, %s, 4)", (frontend_team_id, react_id))
+
+        logger.info("8. Generating Individual Skill Assessments (Creating the Gaps)...")
+        cur.execute("INSERT INTO individual_skills (individual_id, skill_id, proficiency) VALUES (%s, %s, 5)", (inserted_inds[2][0], react_id))
+        
+        cur.execute("SELECT id FROM individuals WHERE team_id = %s", (ent_sales_team_id,))
+        sales_reps = cur.fetchall()
+        for rep in sales_reps:
+            cur.execute("INSERT INTO individual_skills (individual_id, skill_id, proficiency) VALUES (%s, %s, %s)", (rep[0], neg_id, random.randint(1, 2)))
+            cur.execute("INSERT INTO individual_skills (individual_id, skill_id, proficiency) VALUES (%s, %s, %s)", (rep[0], crm_id, random.randint(1, 3)))
+            
+        for _ in range(300):
+            ind_id = random.choice(inserted_inds)[0]
+            s_id = random.choice(skill_ids)[0]
+            prof = random.randint(1, 5)
+            try:
+                cur.execute("INSERT INTO individual_skills (individual_id, skill_id, proficiency) VALUES (%s, %s, %s)", (ind_id, s_id, prof))
+            except Exception:
+                pass 
+
+        logger.info("9. Creating Achievements & Awards...")
+        cat_ids = []
+        for a in ACHIEVEMENTS_DEF:
+            cur.execute("INSERT INTO achievement_catalog (title, description, recurrence, scope) VALUES (%s, %s, %s, %s) RETURNING id", a)
+            cat_ids.append((cur.fetchone()[0], a[0]))
+
+        hackathon_id = next(c[0] for c in cat_ids if c[1] == "Hackathon Champion")
+        safety_id = next(c[0] for c in cat_ids if c[1] == "Safety Certified")
+        
+        cur.execute("INSERT INTO achievement_awards (catalog_id, individual_id, awarded_date) VALUES (%s, %s, CURRENT_DATE)", (hackathon_id, inserted_inds[2][0]))
+        
+        for _ in range(20):
+            ind_id = random.choice(inserted_inds)[0]
+            cur.execute("INSERT INTO achievement_awards (catalog_id, individual_id, awarded_date) VALUES (%s, %s, CURRENT_DATE - %s::int)", (safety_id, ind_id, random.randint(1, 60)))
+
+        logger.info("10. Generating Development Plans...")
+        cur.execute("INSERT INTO development_plans (individual_id, title, status) VALUES (%s, 'Senior Transition Plan', 'completed') RETURNING id", (inserted_inds[2][0],))
+        alex_plan = cur.fetchone()[0]
+        cur.execute("INSERT INTO development_plan_items (plan_id, description, status, item_type) VALUES (%s, 'Lead major feature refactor', 'completed', 'project')", (alex_plan,))
+        cur.execute("INSERT INTO development_plan_items (plan_id, description, status, item_type) VALUES (%s, 'Mentor junior dev', 'completed', 'mentoring')", (alex_plan,))
+        
+        for rep in sales_reps:
+            cur.execute("INSERT INTO development_plans (individual_id, title, status) VALUES (%s, 'Q3 Performance Improvement', 'in_progress') RETURNING id", (rep[0],))
+            plan_id = cur.fetchone()[0]
+            cur.execute("INSERT INTO development_plan_items (plan_id, description, status, item_type) VALUES (%s, 'Complete CRM advanced training module', 'not_started', 'training')", (plan_id,))
+            cur.execute("INSERT INTO development_plan_items (plan_id, description, status, item_type) VALUES (%s, 'Read Negotiation Tactics book', 'in_progress', 'reading')", (plan_id,))
+
+        logger.info("\n✅ SEEDING COMPLETE!")
+        return {"status": "success", "message": "Database reset and populated with ~150 records."}
+
+def handler(event, context):
+    """Lambda handler for cloud seeding."""
+    try:
+        path = event.get("rawPath", "")
+        if path.endswith("/count"):
+            conn = connect(PG_CONFIG)
+            with conn.cursor() as cur:
+                cur.execute("SELECT count(*) FROM individuals")
+                cnt = cur.fetchone()[0]
+            return {
+                "statusCode": 200,
+                "body": json.dumps({"count": cnt})
+            }
+        
+        result = run_seed()
+        return {
+            "statusCode": 200,
+            "body": json.dumps(result)
+        }
+    except Exception as e:
+        logger.error(f"Handler error: {str(e)}")
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"error": str(e)})
+        }
     </file>
     <file path="backend/devplans-service/function.py">
 """
@@ -4048,12 +4487,12 @@ export default function UsersPage() {
         <Typography variant="body2" color="text.secondary">Manage user accounts and role designations</Typography>
       </Box>
 
-      <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
+      <Paper sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', overflowX: 'hidden' }}>
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress /></Box>
         ) : (
-          <TableContainer>
-            <Table>
+          <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
+            <Table sx={{ minWidth: 600 }}>
               <TableHead>
                 <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                   <TableCell>Username</TableCell>
@@ -4303,26 +4742,7 @@ export default function IndividualsPage() {
         </Box>
       </Box>
 
-      <Alert
-        severity="info"
-        icon={<SyncIcon />}
-        sx={{
-          mb: 3, borderRadius: 2,
-          background: theme.palette.mode === 'light'
-            ? 'linear-gradient(135deg, rgba(102,126,234,0.08) 0%, rgba(118,75,162,0.08) 100%)'
-            : 'linear-gradient(135deg, rgba(129,140,248,0.1) 0%, rgba(167,139,250,0.1) 100%)',
-          border: '1px solid',
-          borderColor: 'divider',
-          '& .MuiAlert-icon': { color: 'primary.main' },
-        }}
-      >
-        <Typography variant="body2" sx={{ fontWeight: 500 }}>
-          This directory is managed by the HRIS system. Records are automatically synced from the external employee database.
-          Use the <strong>HRIS Console</strong> (Admin) to simulate sync operations.
-        </Typography>
-      </Alert>
-
-      <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
+      <Paper sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', overflowX: 'hidden' }}>
         <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap', borderBottom: '1px solid', borderColor: 'divider' }}>
           <TextField size="small" placeholder="Search by ID, name, email..." value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
@@ -4344,8 +4764,8 @@ export default function IndividualsPage() {
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress /></Box>
         ) : (
           <>
-            <TableContainer>
-              <Table>
+            <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
+              <Table sx={{ minWidth: 600 }}>
                 <TableHead>
                   <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                     <TableCell>Employee ID</TableCell>
@@ -4546,7 +4966,7 @@ import {
   TableHead, TableRow, Paper, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, Snackbar, Alert, Chip, CircularProgress,
   FormControl, InputLabel, Select, MenuItem, Tooltip, InputAdornment,
-  TablePagination, Tabs, Tab, useTheme,
+  TablePagination, Tabs, Tab, useTheme, Autocomplete,
 } from '@mui/material';
 import {
   Add as AddIcon, Delete as DeleteIcon,
@@ -4644,7 +5064,7 @@ function CatalogTab() {
         )}
       </Box>
 
-      <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
+      <Paper sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', overflowX: 'hidden' }}>
         <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
           <TextField size="small" placeholder="Search catalog..." value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
@@ -4657,8 +5077,8 @@ function CatalogTab() {
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress /></Box>
         ) : (
           <>
-            <TableContainer>
-              <Table>
+            <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
+              <Table sx={{ minWidth: 600 }}>
                 <TableHead>
                   <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                     <TableCell>Title</TableCell>
@@ -4910,7 +5330,7 @@ function AwardsTab() {
         )}
       </Box>
 
-      <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
+      <Paper sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', overflowX: 'hidden' }}>
         <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap', borderBottom: '1px solid', borderColor: 'divider' }}>
           <TextField size="small" placeholder="Search awards..." value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
@@ -4932,8 +5352,8 @@ function AwardsTab() {
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress /></Box>
         ) : (
           <>
-            <TableContainer>
-              <Table>
+            <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
+              <Table sx={{ minWidth: 800 }}>
                 <TableHead>
                   <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                     <TableCell>Achievement</TableCell>
@@ -5027,27 +5447,22 @@ function AwardsTab() {
           </FormControl>
 
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>
-            <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
-              <InputLabel>Team</InputLabel>
-              <Select value={form.team_id} label="Team"
-                onChange={(e) => setForm({ ...form, team_id: e.target.value })}
-                error={!!errors.team_id}
-                disabled={catalog.find(c => c.id === form.catalog_id)?.scope === 'individual'}
-              >
-                <MenuItem value="">None</MenuItem>
-                {teams.map(t => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
-              </Select>
-            </FormControl>
-            <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
-              <InputLabel>Individual</InputLabel>
-              <Select value={form.individual_id} label="Individual"
-                onChange={(e) => setForm({ ...form, individual_id: e.target.value })}
-                disabled={['team', 'department', 'division'].includes(catalog.find(c => c.id === form.catalog_id)?.scope)}
-              >
-                <MenuItem value="">None</MenuItem>
-                {individuals.map(i => <MenuItem key={i.id} value={i.id}>{i.first_name} {i.last_name}</MenuItem>)}
-              </Select>
-            </FormControl>
+            <Autocomplete
+              options={teams}
+              getOptionLabel={(option) => option.name}
+              value={teams.find(t => t.id === form.team_id) || null}
+              onChange={(e, newValue) => setForm({ ...form, team_id: newValue ? newValue.id : '' })}
+              disabled={catalog.find(c => c.id === form.catalog_id)?.scope === 'individual'}
+              renderInput={(params) => <TextField {...params} label="Team" error={!!errors.team_id} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+            />
+            <Autocomplete
+              options={individuals}
+              getOptionLabel={(option) => `${option.first_name} ${option.last_name} (${option.employee_id})`}
+              value={individuals.find(i => i.id === form.individual_id) || null}
+              onChange={(e, newValue) => setForm({ ...form, individual_id: newValue ? newValue.id : '' })}
+              disabled={['team', 'department', 'division'].includes(catalog.find(c => c.id === form.catalog_id)?.scope)}
+              renderInput={(params) => <TextField {...params} label="Individual" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+            />
           </Box>
           {errors.team_id && <Typography variant="caption" color="error" sx={{ ml: 1.5, mt: -1, mb: 1, display: 'block' }}>{errors.team_id}</Typography>}
 
@@ -5729,7 +6144,7 @@ import {
   TableHead, TableRow, Paper, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, Snackbar, Alert, Chip, CircularProgress,
   FormControl, InputLabel, Select, MenuItem, Tooltip, InputAdornment,
-  TablePagination, useTheme,
+  TablePagination, useTheme, Autocomplete,
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
@@ -5743,7 +6158,7 @@ import TeamMap from '../components/TeamMap';
 import { geocodeLocation } from '../utils/geocode';
 import MapIcon from '@mui/icons-material/Map';
 
-const EMPTY_FORM = { name: '', unit_type: 'Team', description: '', location: '', leader_id: '', org_leader_id: '', parent_team_id: '' };
+const EMPTY_FORM = { name: '', unit_type: 'Team', description: '', location: '', leader_id: '', org_leader_id: '', parent_team_id: '', members: [] };
 
 export default function TeamsPage() {
   const theme = useTheme();
@@ -5785,10 +6200,12 @@ export default function TeamsPage() {
 
   const handleOpen = (team = null) => {
     if (team) {
+      const currentMembers = individuals.filter(i => i.team_id === team.id).map(i => i.id);
       setEditingId(team.id);
       setForm({
         name: team.name || '', unit_type: team.unit_type || 'Team', description: team.description || '', location: team.location || '',
         leader_id: team.leader_id || '', org_leader_id: team.org_leader_id || '', parent_team_id: team.parent_team_id || '',
+        members: currentMembers
       });
     } else {
       setEditingId(null);
@@ -5818,21 +6235,43 @@ export default function TeamsPage() {
         lng = coords.lng;
       }
 
+      const { members, ...teamData } = form;
       const data = {
-        ...form,
+        ...teamData,
         location_lat: lat,
         location_lng: lng,
-        leader_id: form.leader_id || null,
-        org_leader_id: form.org_leader_id || null,
-        parent_team_id: form.parent_team_id || null,
+        leader_id: teamData.leader_id || null,
+        org_leader_id: teamData.org_leader_id || null,
+        parent_team_id: teamData.parent_team_id || null,
       };
+
+      let savedTeamId = editingId;
       if (editingId) {
         await teamsService.update(editingId, data);
-        showSnack('Team updated successfully');
       } else {
-        await teamsService.create(data);
-        showSnack('Team created successfully');
+        const newTeam = await teamsService.create(data);
+        savedTeamId = newTeam.id;
       }
+
+      // Process Member Additions / Removals
+      const oldMembers = editingId ? individuals.filter(i => i.team_id === savedTeamId).map(i => i.id) : [];
+      const newMembers = form.members;
+      
+      const toAdd = newMembers.filter(id => !oldMembers.includes(id));
+      const toRemove = oldMembers.filter(id => !newMembers.includes(id));
+
+      await Promise.all([
+        ...toAdd.map(id => {
+          const person = individuals.find(i => i.id === id);
+          return individualsService.update(id, { ...person, team_id: savedTeamId });
+        }),
+        ...toRemove.map(id => {
+          const person = individuals.find(i => i.id === id);
+          return individualsService.update(id, { ...person, team_id: null });
+        })
+      ]);
+
+      showSnack(editingId ? 'Team updated successfully' : 'Team created successfully');
       setDialogOpen(false);
       loadData();
     } catch (err) {
@@ -5885,7 +6324,7 @@ export default function TeamsPage() {
         )}
       </Box>
 
-      <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
+      <Paper sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', overflowX: 'hidden' }}>
         <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
           <TextField size="small" placeholder="Search teams..." value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
@@ -5898,8 +6337,8 @@ export default function TeamsPage() {
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress /></Box>
         ) : (
           <>
-            <TableContainer>
-              <Table>
+            <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
+              <Table sx={{ minWidth: 600 }}>
                 <TableHead>
                   <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                     <TableCell>Team Name</TableCell>
@@ -6046,26 +6485,22 @@ export default function TeamsPage() {
             sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
           />
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>
-            <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
-              <InputLabel>Team Leader</InputLabel>
-              <Select value={form.leader_id} label="Team Leader"
-                onChange={(e) => setForm({ ...form, leader_id: e.target.value })}
-              >
-                <MenuItem value="">None</MenuItem>
-                {individuals.map(i => <MenuItem key={i.id} value={i.id}>{i.first_name} {i.last_name}</MenuItem>)}
-              </Select>
-            </FormControl>
-            <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
-              <InputLabel>Org Leader</InputLabel>
-              <Select value={form.org_leader_id} label="Org Leader"
-                onChange={(e) => setForm({ ...form, org_leader_id: e.target.value })}
-              >
-                <MenuItem value="">None</MenuItem>
-                {individuals.map(i => <MenuItem key={i.id} value={i.id}>{i.first_name} {i.last_name}</MenuItem>)}
-              </Select>
-            </FormControl>
+            <Autocomplete
+              options={individuals}
+              getOptionLabel={(option) => `${option.first_name} ${option.last_name} (${option.employee_id})`}
+              value={individuals.find(i => i.id === form.leader_id) || null}
+              onChange={(e, newValue) => setForm({ ...form, leader_id: newValue ? newValue.id : '' })}
+              renderInput={(params) => <TextField {...params} label="Team Leader" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+            />
+            <Autocomplete
+              options={individuals}
+              getOptionLabel={(option) => `${option.first_name} ${option.last_name} (${option.employee_id})`}
+              value={individuals.find(i => i.id === form.org_leader_id) || null}
+              onChange={(e, newValue) => setForm({ ...form, org_leader_id: newValue ? newValue.id : '' })}
+              renderInput={(params) => <TextField {...params} label="Org Leader" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+            />
           </Box>
-          <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
+          <FormControl fullWidth sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
             <InputLabel>Parent Unit</InputLabel>
             <Select value={form.parent_team_id} label="Parent Unit"
               onChange={(e) => setForm({ ...form, parent_team_id: e.target.value })}
@@ -6074,6 +6509,14 @@ export default function TeamsPage() {
               {teams.filter(t => t.id !== editingId).map(t => <MenuItem key={t.id} value={t.id}>{t.name} ({t.unit_type || 'Team'})</MenuItem>)}
             </Select>
           </FormControl>
+          <Autocomplete
+            multiple
+            options={individuals}
+            getOptionLabel={(option) => `${option.first_name} ${option.last_name}`}
+            value={individuals.filter(i => form.members.includes(i.id))}
+            onChange={(e, newValue) => setForm({ ...form, members: newValue.map(v => v.id) })}
+            renderInput={(params) => <TextField {...params} label="Team Members" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+          />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDialogOpen(false)} sx={{ borderRadius: 2 }}>Cancel</Button>
@@ -6102,7 +6545,7 @@ export default function TeamsPage() {
 
     </file>
     <file path="frontend/src/pages/HRISConsolePage.jsx">
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box, Button, Typography, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, IconButton, Dialog, DialogTitle, DialogContent,
@@ -6111,35 +6554,42 @@ import {
 } from '@mui/material';
 import {
   Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon,
-  CloudSync as SyncIcon, CloudDone as CloudDoneIcon,
-  Storage as StorageIcon, PlayArrow as PlayIcon,
+  Storage as StorageIcon,
 } from '@mui/icons-material';
-import axios from 'axios';
+import api from '../services/api';
+import individualsService from '../services/individualsService';
 import { geocodeLocation } from '../utils/geocode';
-
-const INITIAL_HRIS_DATA = [
-  { employee_id: 'EMP-001', email: 'admin@acme.com', first_name: 'Admin', last_name: 'User', is_direct_staff: true, designation: 'Director of IT', location: 'San Francisco, CA' },
-  { employee_id: 'EMP-002', email: 'jdoe@acme.com', first_name: 'John', last_name: 'Doe', is_direct_staff: true, designation: 'Engineering Manager', location: 'New York, NY' },
-  { employee_id: 'EMP-003', email: 'jsmith@acme.com', first_name: 'Jane', last_name: 'Smith', is_direct_staff: true, designation: 'HR Business Partner', location: 'Lodon, UK' }, // Intentional Typo
-  { employee_id: 'EMP-004', email: 'mbrown@acme.com', first_name: 'Michael', last_name: 'Brown', is_direct_staff: false, designation: 'Software Engineer', location: 'Austin, TX' },
-  { employee_id: 'EMP-005', email: 'swilson@acme.com', first_name: 'Sarah', last_name: 'Wilson', is_direct_staff: true, designation: 'Product Designer', location: 'Seatlte, WA' }, // Intentional Typo
-  { employee_id: 'EMP-006', email: 'dlee@acme.com', first_name: 'David', last_name: 'Lee', is_direct_staff: false, designation: 'Data Analyst', location: 'Chicago, IL' },
-  { employee_id: 'EMP-007', email: 'egarcia@acme.com', first_name: 'Emily', last_name: 'Garcia', is_direct_staff: true, designation: 'Account Executive', location: 'Miami, FL' },
-  { employee_id: 'EMP-008', email: 'rjohnson@acme.com', first_name: 'Robert', last_name: 'Johnson', is_direct_staff: true, designation: 'Customer Support Lead', location: 'Toronto, ON' },
-];
 
 const EMPTY_FORM = { employee_id: '', email: '', first_name: '', last_name: '', is_direct_staff: true, designation: '', location: '' };
 
 export default function HRISConsolePage() {
   const theme = useTheme();
-  const [hrisData, setHrisData] = useState(INITIAL_HRIS_DATA);
+  const [hrisData, setHrisData] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
-  const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+
+  // 1. Fetch real data on load for total congruence
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const data = await individualsService.getAll();
+      setHrisData(data);
+    } catch (err) {
+      showSnack('Failed to load HRIS data', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleOpen = (index = null) => {
     if (index !== null) {
@@ -6147,7 +6597,8 @@ export default function HRISConsolePage() {
       setForm({ ...hrisData[index] });
     } else {
       setEditingIndex(null);
-      const nextId = `EMP-${String(hrisData.length + 1).padStart(3, '0')}`;
+      // Generate a random ID for new hires to avoid collisions
+      const nextId = `EMP-${Math.floor(1000 + Math.random() * 9000)}`;
       setForm({ ...EMPTY_FORM, employee_id: nextId });
     }
     setErrors({});
@@ -6167,154 +6618,70 @@ export default function HRISConsolePage() {
     return Object.keys(e).length === 0;
   };
 
-  const handleSave = () => {
+  // 2. Fire webhook on Save
+  const handleSave = async () => {
     if (!validate()) return;
-    if (editingIndex !== null) {
-      const updated = [...hrisData];
-      updated[editingIndex] = { ...form };
-      setHrisData(updated);
-      showSnack('Record updated');
-    } else {
-      setHrisData([...hrisData, { ...form }]);
-      showSnack('Record added');
-    }
-    setDialogOpen(false);
-  };
-
-  const handleDelete = (index) => {
-    setHrisData(hrisData.filter((_, i) => i !== index));
-    showSnack('Record removed');
-  };
-
-  const handleSync = async () => {
-    if (hrisData.length === 0) {
-      showSnack('No records to sync', 'warning');
-      return;
-    }
-
-    setSyncing(true);
-    setSyncResult(null);
-
+    setSaving(true);
+    
     try {
-      // Intercept and resolve locations sequentially to respect API rate limits
-      const enrichedData = [];
-      for (let i = 0; i < hrisData.length; i++) {
-        const emp = hrisData[i];
-        if (emp.location) {
-          const coords = await geocodeLocation(emp.location);
-          enrichedData.push({ ...emp, location_lat: coords.lat, location_lng: coords.lng });
-          
-          // Delay 1.1 seconds between requests (Nominatim limit is 1 req/sec)
-          // We skip the delay on the final iteration to save time
-          if (i < hrisData.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 1100));
-          }
-        } else {
-          enrichedData.push(emp);
-        }
-      }
-
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-      const response = await axios.post(
-        `${apiUrl}/api/individuals-service/import`,
-        { individuals: enrichedData },
-        { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
-      );
+      let lat = form.location_lat || null;
+      let lng = form.location_lng || null;
       
-      setSyncResult({
-        success: true,
-        message: response.data.message || `Successfully synced ${hrisData.length} records`,
-        timestamp: new Date().toLocaleTimeString(),
-      });
-      showSnack('Sync completed successfully!');
+      // Geocode locally if location string changed
+      if (form.location && form.location !== hrisData[editingIndex]?.location) {
+        const coords = await geocodeLocation(form.location);
+        lat = coords.lat; lng = coords.lng;
+      }
+      
+      const payload = { ...form, location_lat: lat, location_lng: lng };
+      
+      await api.post('/api/individuals-service/webhook', { action: 'upsert', data: payload });
+
+      showSnack('Record saved and synced to application');
+      setDialogOpen(false);
+      loadData(); // Refresh to ensure pure congruence
     } catch (error) {
-      const errorMsg = error.response?.data?.error || error.message || 'Sync failed';
-      setSyncResult({
-        success: false,
-        message: errorMsg,
-        timestamp: new Date().toLocaleTimeString(),
-      });
-      showSnack(errorMsg, 'error');
+      showSnack(error.response?.data?.error || 'Webhook sync failed', 'error');
     } finally {
-      setSyncing(false);
+      setSaving(false);
+    }
+  };
+
+  // 3. Fire webhook on Delete
+  const handleDelete = async (index) => {
+    try {
+      const empId = hrisData[index].employee_id;
+      await api.post('/api/individuals-service/webhook', { action: 'delete', employee_id: empId });
+      showSnack('Record terminated in application');
+      loadData(); // Refresh to clear from active list
+    } catch (error) {
+      showSnack('Failed to sync deletion', 'error');
     }
   };
 
   const showSnack = (message, severity = 'success') => setSnack({ open: true, message, severity });
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress /></Box>;
 
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <StorageIcon sx={{ color: 'success.main' }} /> HRIS Simulation Console
+            <StorageIcon sx={{ color: 'success.main' }} /> HRIS Console
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Simulate the external HRIS database and test employee sync operations
+            Live integration portal. Source of truth for active employee records.
           </Typography>
         </Box>
       </Box>
 
-      {/* Control Panel */}
-      <Paper sx={{
-        borderRadius: 3, p: 3, mb: 3,
-        background: theme.palette.mode === 'light'
-          ? `linear-gradient(135deg, ${theme.palette.success.main}10 0%, ${theme.palette.success.dark}10 100%)`
-          : `linear-gradient(135deg, ${theme.palette.success.main}15 0%, ${theme.palette.success.dark}15 100%)`,
-        border: '1px solid',
-        borderColor: `${theme.palette.success.main}30`,
-      }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-          <Box>
-            <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-              <SyncIcon sx={{ color: 'success.main' }} /> Sync Control
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Push {hrisData.length} records to the Individuals Service via <code style={{ background: theme.palette.action.hover, padding: '2px 6px', borderRadius: 4, fontSize: '0.8em' }}>/api/individuals-service/import</code>
-            </Typography>
-          </Box>
-          <Button
-            variant="contained"
-            startIcon={syncing ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : <PlayIcon />}
-            onClick={handleSync}
-            disabled={syncing}
-            sx={{
-              borderRadius: 2, textTransform: 'none', fontWeight: 700, px: 4, py: 1.2,
-              background: theme.palette.mode === 'light'
-                ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-                : 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-              boxShadow: theme.palette.mode === 'light' 
-                ? '0 4px 14px rgba(16,185,129,0.4)'
-                : '0 4px 14px rgba(0,0,0,0.4)',
-              fontSize: '0.95rem',
-            }}
-          >
-            {syncing ? 'Syncing...' : 'Trigger Sync'}
-          </Button>
-        </Box>
-
-        {syncResult && (
-          <Alert
-            severity={syncResult.success ? 'success' : 'error'}
-            icon={syncResult.success ? <CloudDoneIcon /> : undefined}
-            sx={{ mt: 2, borderRadius: 2 }}
-          >
-            <Typography variant="body2" sx={{ fontWeight: 500 }}>
-              {syncResult.message}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              {syncResult.timestamp}
-            </Typography>
-          </Alert>
-        )}
-      </Paper>
-
       {/* HRIS Data Table */}
-      <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
+      <Paper sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', overflowX: 'hidden' }}>
         <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid', borderColor: 'divider' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              Simulated HRIS Records
+              Live Employee Records
             </Typography>
             <Chip label={hrisData.length} size="small"
               sx={{ fontWeight: 700, bgcolor: `${theme.palette.success.main}20`, color: 'success.main', minWidth: 28 }}
@@ -6331,8 +6698,8 @@ export default function HRISConsolePage() {
           </Button>
         </Box>
 
-        <TableContainer>
-          <Table>
+        <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
+          <Table sx={{ minWidth: 600 }}>
             <TableHead>
               <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                 <TableCell>Employee ID</TableCell>
@@ -6346,12 +6713,12 @@ export default function HRISConsolePage() {
             <TableBody>
               {hrisData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} sx={{ textAlign: 'center', py: 6 }}>
-                    <Typography color="text.secondary">No HRIS records. Add some employees to test sync.</Typography>
+                  <TableCell colSpan={6} sx={{ textAlign: 'center', py: 6 }}>
+                    <Typography color="text.secondary">No HRIS records found.</Typography>
                   </TableCell>
                 </TableRow>
               ) : (
-                hrisData.map((record, index) => (
+                hrisData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((record, index) => (
                   <TableRow key={`${record.employee_id}-${index}`} hover sx={{ transition: 'background 0.2s' }}>
                     <TableCell>
                       <Chip label={record.employee_id} size="small"
@@ -6384,7 +6751,7 @@ export default function HRISConsolePage() {
                           <EditIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Remove">
+                      <Tooltip title="Delete Record">
                         <IconButton size="small" onClick={() => handleDelete(index)} sx={{ color: 'error.main' }}>
                           <DeleteIcon fontSize="small" />
                         </IconButton>
@@ -6396,28 +6763,15 @@ export default function HRISConsolePage() {
             </TableBody>
           </Table>
         </TableContainer>
-      </Paper>
-
-      {/* How it works */}
-      <Paper sx={{ borderRadius: 3, p: 3, mt: 3, bgcolor: 'action.hover', border: '1px solid', borderColor: 'divider' }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
-          How This Works
-        </Typography>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {[
-            { step: '1', text: 'Add, edit, or remove employee records in the simulated HRIS database above.' },
-            { step: '2', text: 'Click "Trigger Sync" to push all records to the Individuals Service via the /import endpoint.' },
-            { step: '3', text: 'The service performs an upsert — new records are created, existing ones (by employee_id) are updated.' },
-            { step: '4', text: 'Navigate to the Individuals page to verify the synced data.' },
-          ].map(item => (
-            <Box key={item.step} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
-              <Chip label={item.step} size="small"
-                sx={{ fontWeight: 700, minWidth: 28, bgcolor: 'success.main', color: '#fff', fontSize: '0.7rem' }}
-              />
-              <Typography variant="body2" color="text.secondary">{item.text}</Typography>
-            </Box>
-          ))}
-        </Box>
+        <TablePagination
+          component="div"
+          count={hrisData.length}
+          page={page}
+          rowsPerPage={rowsPerPage}
+          onPageChange={(_, p) => setPage(p)}
+          onRowsPerPageChange={(e) => { setRowsPerPage(+e.target.value); setPage(0); }}
+          rowsPerPageOptions={[5, 10, 25, 50]}
+        />
       </Paper>
 
       {/* Add/Edit Dialog */}
@@ -6426,11 +6780,10 @@ export default function HRISConsolePage() {
           {editingIndex !== null ? 'Edit HRIS Record' : 'Add HRIS Record'}
         </DialogTitle>
         <DialogContent sx={{ pt: '16px !important' }}>
-          <TextField fullWidth label="Employee ID" value={form.employee_id} required
+          <TextField fullWidth label="Employee ID" value={form.employee_id} required disabled={editingIndex !== null}
             onChange={(e) => setForm({ ...form, employee_id: e.target.value })}
             error={!!errors.employee_id} helperText={errors.employee_id}
             sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-            placeholder="e.g. EMP-009"
           />
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>
             <TextField label="First Name" value={form.first_name} required
@@ -6448,17 +6801,14 @@ export default function HRISConsolePage() {
             onChange={(e) => setForm({ ...form, email: e.target.value })}
             error={!!errors.email} helperText={errors.email}
             sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-            placeholder="e.g. name@acme.com"
           />
           <TextField fullWidth label="Designation / Job Title" value={form.designation}
             onChange={(e) => setForm({ ...form, designation: e.target.value })}
             sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-            placeholder="e.g. Senior Software Engineer"
           />
           <TextField fullWidth label="Location (City, Country)" value={form.location || ''}
             onChange={(e) => setForm({ ...form, location: e.target.value })}
             sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-            placeholder="e.g. San Francisco, CA"
           />
           <FormControlLabel
             control={<Checkbox checked={!form.is_direct_staff} onChange={(e) => setForm({ ...form, is_direct_staff: !e.target.checked })} />}
@@ -6467,12 +6817,12 @@ export default function HRISConsolePage() {
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDialogOpen(false)} sx={{ borderRadius: 2 }}>Cancel</Button>
-          <Button variant="contained" onClick={handleSave}
+          <Button variant="contained" onClick={handleSave} disabled={saving}
             sx={{ borderRadius: 2, background: theme.palette.mode === 'light'
                 ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
                 : 'linear-gradient(135deg, #059669 0%, #047857 100%)' }}
           >
-            {editingIndex !== null ? 'Update' : 'Add'}
+            {saving ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : (editingIndex !== null ? 'Update' : 'Add')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -6484,7 +6834,6 @@ export default function HRISConsolePage() {
     </Box>
   );
 }
-
     </file>
     <file path="frontend/src/pages/LoginPage.jsx">
 import { useState } from 'react';
@@ -6793,7 +7142,7 @@ function CatalogTab() {
         )}
       </Box>
 
-      <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
+      <Paper sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', overflowX: 'hidden' }}>
         <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
           <TextField size="small" placeholder="Search skills..." value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
@@ -6806,8 +7155,8 @@ function CatalogTab() {
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress /></Box>
         ) : (
           <>
-            <TableContainer>
-              <Table>
+            <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
+              <Table sx={{ minWidth: 600 }}>
                 <TableHead>
                   <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                     <TableCell>Skill Name</TableCell>
@@ -7031,12 +7380,12 @@ function TeamSkillsTab() {
       ) : (
         <>
           {/* Required Skills List */}
-          <Paper sx={{ borderRadius: 3, overflow: 'hidden', mb: 3 }}>
+          <Paper sx={{ borderRadius: 3, overflow: 'hidden', mb: 3, width: '100%', overflowX: 'hidden' }}>
             <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
               <Typography variant="subtitle1" fontWeight={700}>Required Project Skills</Typography>
             </Box>
-            <TableContainer>
-              <Table>
+            <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
+              <Table sx={{ minWidth: 600 }}>
                 <TableHead>
                   <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                     <TableCell>Skill</TableCell>
@@ -7078,7 +7427,7 @@ function TeamSkillsTab() {
 
           {/* Gap Analysis */}
           {gapAnalysis.length > 0 && (
-            <Paper sx={{ borderRadius: 3, p: 3 }}>
+            <Paper sx={{ borderRadius: 3, p: 3, width: '100%', overflowX: 'hidden' }}>
               <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <GapIcon sx={{ color: 'warning.main' }} /> Skill Gap Analysis
               </Typography>
@@ -7230,7 +7579,7 @@ import {
   Box, Button, Typography, Paper, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, Snackbar, Alert, Chip, CircularProgress,
   FormControl, InputLabel, Select, MenuItem, Tooltip, LinearProgress,
-  Accordion, AccordionSummary, AccordionDetails, Checkbox, Divider, useTheme,
+  Accordion, AccordionSummary, AccordionDetails, Checkbox, Divider, useTheme, Autocomplete,
 } from '@mui/material';
 import {
   Add as AddIcon, Delete as DeleteIcon, ExpandMore as ExpandIcon,
@@ -7472,15 +7821,15 @@ export default function DevPlansPage() {
       {/* Filter */}
       {role !== 'employee' && (
         <Box sx={{ mb: 3 }}>
-          <FormControl size="small" sx={{ minWidth: 250, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
-            <InputLabel>Filter by Employee</InputLabel>
-            <Select value={filterIndividual} label="Filter by Employee"
-              onChange={(e) => setFilterIndividual(e.target.value)}
-            >
-              <MenuItem value="">All Employees</MenuItem>
-              {individuals.map(i => <MenuItem key={i.id} value={i.id}>{i.first_name} {i.last_name}</MenuItem>)}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            size="small"
+            options={individuals}
+            getOptionLabel={(option) => `${option.first_name} ${option.last_name}`}
+            value={individuals.find(i => i.id === filterIndividual) || null}
+            onChange={(e, newValue) => setFilterIndividual(newValue ? newValue.id : '')}
+            renderInput={(params) => <TextField {...params} label="Filter by Employee" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+            sx={{ minWidth: 250 }}
+          />
         </Box>
       )}
 
@@ -7619,15 +7968,15 @@ export default function DevPlansPage() {
       <Dialog open={planDialogOpen} onClose={() => setPlanDialogOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 700 }}>{editingPlan ? 'Edit Plan' : 'New Development Plan'}</DialogTitle>
         <DialogContent sx={{ pt: '16px !important' }}>
-          <FormControl fullWidth sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
-            <InputLabel>Employee *</InputLabel>
-            <Select value={planForm.individual_id} label="Employee *"
-              onChange={(e) => setPlanForm({ ...planForm, individual_id: e.target.value })}
-              disabled={!!editingPlan}
-            >
-              {individuals.map(i => <MenuItem key={i.id} value={i.id}>{i.first_name} {i.last_name}</MenuItem>)}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            options={individuals}
+            getOptionLabel={(option) => `${option.first_name} ${option.last_name} (${option.employee_id})`}
+            value={individuals.find(i => i.id === planForm.individual_id) || null}
+            onChange={(e, newValue) => setPlanForm({ ...planForm, individual_id: newValue ? newValue.id : '' })}
+            disabled={!!editingPlan}
+            renderInput={(params) => <TextField {...params} label="Employee *" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+            sx={{ mb: 2 }}
+          />
           <TextField fullWidth label="Plan Title *" value={planForm.title}
             onChange={(e) => setPlanForm({ ...planForm, title: e.target.value })}
             sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
@@ -8944,17 +9293,17 @@ resource "random_pet" "this" {
 # resource "aws_cloudwatch_event_rule" "every_five_minutes" {
 #   count               = data.aws_caller_identity.this.id != "000000000000" ? 1 : 0
 #   name                = "${var.aws_project}-hris-sync-rule-${local.app_id}"
-#   description         = "Fires every 5 minutes to trigger the HRIS employee sync"
-#   schedule_expression = "rate(5 minutes)"
+#   description         = "Fires every 2 hours to trigger the HRIS employee sync safety net"
+#   schedule_expression = "rate(2 hours)" 
 # }
-#
+# 
 # resource "aws_cloudwatch_event_target" "sync_lambda_target" {
 #   count     = data.aws_caller_identity.this.id != "000000000000" ? 1 : 0
 #   rule      = aws_cloudwatch_event_rule.every_five_minutes[0].name
 #   target_id = "EmployeeSyncServiceLambda"
 #   arn       = module.lambda["employee-sync-service"].lambda_function_arn
 # }
-#
+# 
 # resource "aws_lambda_permission" "allow_eventbridge" {
 #   count         = data.aws_caller_identity.this.id != "000000000000" ? 1 : 0
 #   statement_id  = "AllowExecutionFromEventBridge"
@@ -8981,7 +9330,7 @@ provider "aws" {
 
 terraform {
   backend "s3" {
-    bucket = "coding-workshop-us-east-1-abcd1234"
+    bucket = "coding-workshop-tfstate-164f729a"
     key    = "terraform/terraform.tfstate"
   }
 
@@ -12331,7 +12680,7 @@ echo "INFO: Environment - $ENVIRONMENT"
 # AWS Deployment Configuration
 if [ "$ENVIRONMENT" = "aws" ]; then
     # Setup participant if config is missing
-    $SCRIPT_DIR/setup-participant.sh
+    [ -f "$ENVIRONMENT_CONFIG" ] || $SCRIPT_DIR/setup-participant.sh
 
     # Load participant-specific configuration if available
     if [ -f "$ENVIRONMENT_CONFIG" ]; then
@@ -12419,8 +12768,8 @@ if [ ! -f .env ] && [ -f $BUILD_DIR/.env.local ]; then
     mv -f $BUILD_DIR/.env.local $BUILD_DIR/.env
 fi
 
-# Upload built frontend to S3 (with deletion of old files)
-aws s3 sync $BUILD_DIR/ s3://$BUCKET_NAME/ --delete $AWS_ENDPOINT
+# Upload built frontend to S3 (with deletion of old files, but preserving lambdas)
+aws s3 sync $BUILD_DIR/ s3://$BUCKET_NAME/ --delete --exclude 'lambda/*' $AWS_ENDPOINT
 
 # Invalidate CloudFront cache for AWS deployments
 if [ "$ENVIRONMENT" = "aws" ]; then
