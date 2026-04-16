@@ -1,0 +1,5 @@
+# Bandit Configuration File
+exclude_dirs:
+  - '*/typing_extensions.py'
+  - '*/tests/*'
+  - '*/.venv/*'

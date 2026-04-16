@@ -32,7 +32,7 @@ jobs:
       - name: Install and Test
         run: |
           cd frontend
-          npm install
+          npm install --legacy-peer-deps
           npx vitest run --passWithNoTests
       - name: Build Check
         run: |

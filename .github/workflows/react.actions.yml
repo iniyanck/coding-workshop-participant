@@ -21,7 +21,7 @@ jobs:
           node-version: '24'
 
       - name: Install npm dependencies
-        run: npm install --prefix ./frontend
+        run: npm install --prefix ./frontend --legacy-peer-deps
 
       - name: Run npm audit
         run: npm audit --prefix ./frontend --audit-level=high

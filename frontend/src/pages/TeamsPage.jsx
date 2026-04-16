@@ -158,6 +158,22 @@ export default function TeamsPage() {
     return p ? `${p.first_name} ${p.last_name}` : '—';
   };
 
+  // --- NEW: Calculate display location for the table ---
+  const getTeamLocation = (team) => {
+    if (team.location) return team.location; // Explicitly assigned
+    
+    const teamMembers = individuals.filter(i => i.team_id === team.id && i.location);
+    if (teamMembers.length === 0) return '—';
+    
+    const counts = teamMembers.reduce((acc, m) => {
+      acc[m.location] = (acc[m.location] || 0) + 1;
+      return acc;
+    }, {});
+    
+    const majorityLoc = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
+    return `${majorityLoc} (Default)`;
+  };
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
@@ -242,7 +258,7 @@ export default function TeamsPage() {
                             }}
                           />
                         </TableCell>
-                        <TableCell><Typography variant="body2" color="text.secondary">{team.location || '—'}</Typography></TableCell>
+                        <TableCell><Typography variant="body2" color="text.secondary">{getTeamLocation(team)}</Typography></TableCell>
                         <TableCell>
                           {team.leader_id ? (
                             <Typography variant="body2" color="text.secondary">{getPersonName(team.leader_id)}</Typography>

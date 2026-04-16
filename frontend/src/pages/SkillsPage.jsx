@@ -14,6 +14,7 @@ import {
 import skillsService from '../services/skillsService';
 import teamsService from '../services/teamsService';
 import authService from '../services/authService';
+import individualsService from '../services/individualsService';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 const SKILL_CATEGORIES = ['Technical', 'Leadership', 'Communication', 'Management', 'Creative', 'Analytical', 'General'];
@@ -267,6 +268,55 @@ function CatalogTab() {
   );
 }
 
+// --- My Skills Tab ---
+function MySkillsTab() {
+  const [mySkills, setMySkills] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const user = authService.getUser();
+
+  useEffect(() => {
+    const fetchMySkills = async () => {
+      try {
+        // Fetch the individual record mapped to this user
+        const individuals = await individualsService.getAll();
+        const me = individuals.find(i => i.user_id === user?.id);
+        if (me) {
+          const skills = await skillsService.getIndividualSkills(me.id);
+          setMySkills(skills);
+        }
+      } catch (err) {
+        console.error("Failed to load personal skills", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchMySkills();
+  }, [user?.id]);
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 6 }}><CircularProgress /></Box>;
+
+  return (
+    <Paper sx={{ borderRadius: 3, p: 3 }}>
+      <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>My Assessed Skills</Typography>
+      {mySkills.length === 0 ? (
+        <Typography color="text.secondary">You have no assessed skills yet.</Typography>
+      ) : (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {mySkills.map(skill => (
+            <Box key={skill.id} sx={{ display: 'flex', justifyContent: 'space-between', p: 2, bgcolor: 'action.hover', borderRadius: 2 }}>
+              <Box>
+                <Typography fontWeight={600}>{skill.skill_name}</Typography>
+                <Typography variant="caption" color="text.secondary">{skill.category}</Typography>
+              </Box>
+              <Rating value={skill.proficiency} readOnly />
+            </Box>
+          ))}
+        </Box>
+      )}
+    </Paper>
+  );
+}
+
 // --- Team Skills & Gap Analysis Tab ---
 function TeamSkillsTab() {
   const theme = useTheme();
@@ -293,6 +343,11 @@ function TeamSkillsTab() {
       ]);
       setTeams(t);
       setCatalog(c);
+      
+      // Auto-select team for regular employees
+      if (t.length === 1) {
+        setSelectedTeam(t[0].id);
+      }
     } catch {
       showSnack('Failed to load data', 'error');
     } finally {
@@ -535,6 +590,7 @@ function TeamSkillsTab() {
 export default function SkillsPage() {
   const theme = useTheme();
   const [tab, setTab] = useState(0);
+  const isEmployee = authService.getUser()?.role === 'employee';
 
   return (
     <Box>
@@ -556,12 +612,17 @@ export default function SkillsPage() {
             '& .MuiTabs-indicator': { bgcolor: 'primary.main', borderRadius: 2 },
           }}
         >
-          <Tab icon={<CategoryIcon />} iconPosition="start" label="Skills Catalog" />
+          {isEmployee && <Tab icon={<SkillsIcon />} iconPosition="start" label="My Skills" />}
           <Tab icon={<GapIcon />} iconPosition="start" label="Team Skills & Gaps" />
+          {!isEmployee && <Tab icon={<CategoryIcon />} iconPosition="start" label="Skills Catalog" />}
         </Tabs>
       </Paper>
 
-      {tab === 0 ? <CatalogTab /> : <TeamSkillsTab />}
+      {isEmployee ? (
+        tab === 0 ? <MySkillsTab /> : <TeamSkillsTab />
+      ) : (
+        tab === 0 ? <TeamSkillsTab /> : <CatalogTab />
+      )}
     </Box>
   );
 }

@@ -261,3 +261,10 @@ tfplan
 
 # Snyk Security Extension - AI Rules (auto-generated)
 .github/instructions/snyk_rules.instructions.md
+
+# Ignore pip-installed dependencies in service directories
+backend/*/typing_extensions.py
+backend/*/*.dist-info/
+backend/*/__pycache__/
+backend/*/bin/
+backend/*/*.pyc

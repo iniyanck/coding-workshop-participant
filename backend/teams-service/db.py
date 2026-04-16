@@ -102,15 +102,17 @@ def get_all_teams(config, user=None):
         params = []
 
         # RBAC Application Logic
-        if role == "hr":
-            base_query += " AND t.location = %s"
-            params.append(location)
-        elif role == "manager":
+        if role == "manager":
             # Managers see teams they lead
             base_query += " AND t.leader_id = %s"
             params.append(user_id)
-        elif role == "employee":
+        elif role == "hr":
+            # HR sees all teams for oversight
             pass
+        elif role == "employee":
+            # Employees ONLY see the team they are assigned to
+            base_query += " AND t.id IN (SELECT team_id FROM individuals WHERE user_id = %s AND is_active = true)"
+            params.append(user_id)
 
         base_query += " ORDER BY t.name"
         cur.execute(base_query, tuple(params))

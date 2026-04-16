@@ -92,7 +92,7 @@ const server = http.createServer((req, res) => {
   delete headers['sec-fetch-mode'];
   delete headers['sec-fetch-dest'];
 
-  // Keep only essential headers
+  // Keep only essential headers and the authorization token
   const options = {
     hostname: target.hostname,
     port: target.port,
@@ -105,6 +105,11 @@ const server = http.createServer((req, res) => {
       'host': target.host
     }
   };
+
+  // Safely forward the JWT if the frontend included it
+  if (headers.authorization) {
+    options.headers['authorization'] = headers.authorization;
+  }
 
   const proxyReq = protocol.request(options, (proxyRes) => {
     // Filter out CORS headers from Lambda response since we set our own

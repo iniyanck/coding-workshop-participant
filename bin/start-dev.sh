@@ -347,7 +347,7 @@ done
 for pkg in "$PROJECT_ROOT"/backend/*/package.json; do
     svc_dir="$(dirname "$pkg")"
     echo -e "  Installing npm dependencies for $(basename "$svc_dir")..."
-    npm install --prefix "$svc_dir" --silent 2>/dev/null || true
+    npm install --prefix "$svc_dir" --silent --legacy-peer-deps 2>/dev/null || true
 done
 shopt -u nullglob
 
@@ -472,7 +472,7 @@ cd "$FRONTEND_DIR"
 if [ ! -d "node_modules" ]; then
     echo -e "  ⚠ Frontend dependencies not installed, installing..."
     rm -f package-lock.json
-    npm install > /tmp/npm-install.log 2>&1 || {
+    npm install --legacy-peer-deps > /tmp/npm-install.log 2>&1 || {
         echo -e "  ✗ npm install failed"
         tail -n 30 /tmp/npm-install.log | sed 's/^/    /'
         exit 1

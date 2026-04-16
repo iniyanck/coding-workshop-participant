@@ -226,7 +226,7 @@ export default function Layout() {
         </Drawer>
       </Box>
 
-      <Box component="main" sx={{ flexGrow: 1, p: { xs: 2, md: 3 }, width: { md: `calc(100% - ${DRAWER_WIDTH}px)` }, mt: '64px' }}>
+      <Box component="main" sx={{ flexGrow: 1, p: { xs: 2, md: 3 }, width: { xs: '100%', md: `calc(100% - ${DRAWER_WIDTH}px)` }, maxWidth: '100vw', minWidth: 0, mt: '64px' }}>
         <Outlet />
       </Box>
     </Box>

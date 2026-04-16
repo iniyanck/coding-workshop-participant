@@ -259,6 +259,34 @@ function AdminDashboard({ user, navigate, loading, teams, individuals, awards })
   const orgLeaderTeams = teams.filter(t => t.org_leader_id);
   const recentAwards = awards.slice(0, 5);
 
+  // --- NEW: Dynamic Location Calculation ---
+  const uniqueLocations = new Set();
+
+  // Rule 1: Direct employees' locations are distinct offices
+  individuals.forEach(ind => {
+    if (ind.is_direct_staff && ind.location) {
+      uniqueLocations.add(ind.location);
+    }
+  });
+
+  // Rule 2: Teams use assigned location OR default to member majority
+  teams.forEach(team => {
+    if (team.location) {
+      uniqueLocations.add(team.location);
+    } else {
+      const teamMembers = individuals.filter(i => i.team_id === team.id && i.location);
+      if (teamMembers.length > 0) {
+        const locCounts = teamMembers.reduce((acc, m) => {
+          acc[m.location] = (acc[m.location] || 0) + 1;
+          return acc;
+        }, {});
+        const majorityLoc = Object.keys(locCounts).reduce((a, b) => locCounts[a] > locCounts[b] ? a : b);
+        uniqueLocations.add(majorityLoc);
+      }
+    }
+  });
+  // -----------------------------------------
+
   return (
     <>
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -278,7 +306,7 @@ function AdminDashboard({ user, navigate, loading, teams, individuals, awards })
             onClick={() => navigate('/achievements')} />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-          <StatCard title="Locations" value={[...new Set(teams.map(t => t.location).filter(Boolean))].length} loading={loading}
+          <StatCard title="Locations" value={uniqueLocations.size} loading={loading}
             icon={<LocationIcon />} gradient="linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)" />
         </Grid>
       </Grid>
@@ -634,9 +662,9 @@ export default function DashboardPage() {
         </Typography>
       </Box>
 
-      {role === 'admin' ? (
+      {role === 'admin' || role === 'hr' ? (
         <AdminDashboard user={user} navigate={navigate} loading={loading} teams={teams} individuals={individuals} awards={awards} />
-      ) : role === 'hr' || role === 'manager' ? (
+      ) : role === 'manager' ? (
         <>
           <ManagerDashboard user={user} navigate={navigate} loading={loading} teams={teams} individuals={individuals} awards={awards} role={role} />
           {/* Manager also gets their own employee stats if they have an individual record */}
