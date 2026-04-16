@@ -44,19 +44,32 @@ def init_table(config):
 
 
 def bulk_upsert_individuals(config, individuals_data):
-    """Upsert a list of individuals based on employee_id."""
+    """Upsert a list of individuals based on employee_id, and deactivate those not in the list."""
     conn = get_connection(config)
+    employee_ids = [data["employee_id"] for data in individuals_data if "employee_id" in data]
+    
     with conn.cursor() as cur:
+        # Full Sync: Deactivate individuals not in the HRIS payload
+        # Clear their emails to prevent UniqueViolation if emails are reused
+        if employee_ids:
+            cur.execute(
+                """UPDATE individuals 
+                   SET is_active = false, email = NULL, user_id = NULL, updated_at = CURRENT_TIMESTAMP
+                   WHERE employee_id != ALL(%s) AND (is_active = true OR email IS NOT NULL)""",
+                (employee_ids,)
+            )
+            
         for data in individuals_data:
             cur.execute(
-                """INSERT INTO individuals (employee_id, email, first_name, last_name, team_id, is_direct_staff)
-                   VALUES (%s, %s, %s, %s, %s, %s)
+                """INSERT INTO individuals (employee_id, email, first_name, last_name, team_id, is_direct_staff, is_active)
+                   VALUES (%s, %s, %s, %s, %s, %s, true)
                    ON CONFLICT (employee_id) DO UPDATE SET
                        email = EXCLUDED.email,
                        first_name = EXCLUDED.first_name,
                        last_name = EXCLUDED.last_name,
                        team_id = COALESCE(EXCLUDED.team_id, individuals.team_id),
                        is_direct_staff = EXCLUDED.is_direct_staff,
+                       is_active = true,
                        updated_at = CURRENT_TIMESTAMP""",
                 (
                     data["employee_id"],

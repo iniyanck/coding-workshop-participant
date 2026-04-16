@@ -115,7 +115,7 @@ def handle_bulk_import(body):
         return response(200, {"message": f"Successfully imported/updated {len(individuals)} records."})
     except Exception as e:
         logger.error("Import error: %s", str(e))
-        return response(500, {"error": "Failed to process import."})
+        return response(500, {"error": "Failed to process import.", "details": str(e)})
 
 
 def handle_jit_link(body):

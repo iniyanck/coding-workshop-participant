@@ -234,3 +234,16 @@ def row_to_dict(row):
         "location_lng": float(row[7]) if row[7] is not None else None,
         "created_at": row[8].isoformat() if row[8] else None,
     }
+
+def check_individual_exists(config, email):
+    """Check if an individual with the given email exists."""
+    conn = get_connection(config)
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM individuals WHERE email = %s AND is_active = true", (email,))
+        return cur.fetchone() is not None
+
+def link_individual_user(config, email, user_id):
+    """Link an individual to a newly created user ID."""
+    conn = get_connection(config)
+    with conn.cursor() as cur:
+        cur.execute("UPDATE individuals SET user_id = %s WHERE email = %s", (user_id, email))

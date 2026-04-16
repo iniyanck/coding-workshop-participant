@@ -14,7 +14,7 @@ import os
 import urllib.request
 import urllib.parse
 import urllib.error
-from db import init_table, get_user_by_username, create_user, get_all_users, update_user_designation, delete_user, get_designation_by_role, get_user_by_id
+from db import init_table, get_user_by_username, create_user, get_all_users, update_user_designation, delete_user, get_designation_by_role, get_user_by_id, check_individual_exists, link_individual_user
 from auth import hash_password, verify_password, create_token, verify_token
 
 logger = logging.getLogger()
@@ -146,13 +146,17 @@ def handle_register(body):
 
     # --- NEW: Strict HRIS Email Verification Guardrail ---
     email = body.get("email", "").strip().lower()
-    individuals_url = os.getenv("INDIVIDUALS_SERVICE_URL", "http://localhost:8080/api/individuals-service")
     
     try:
-        # Check if the email exists in the Individuals Service
-        lookup_url = f"{individuals_url}/lookup?email={urllib.parse.quote(email)}"
-        req = urllib.request.Request(lookup_url, method='GET')
-        urllib.request.urlopen(req, timeout=5)
+        if IS_LOCAL:
+            individuals_url = os.getenv("INDIVIDUALS_SERVICE_URL", "http://localhost:8080/api/individuals-service")
+            lookup_url = f"{individuals_url}/lookup?email={urllib.parse.quote(email)}"
+            req = urllib.request.Request(lookup_url, method='GET')
+            urllib.request.urlopen(req, timeout=5)
+        else:
+            # Query the database directly since both lambdas share the identical backend DB in the identical private VPC subnet
+            if not check_individual_exists(PG_CONFIG, email):
+                return response(403, {"error": "Registration blocked: Your email is not found in the verified employee database."})
     except urllib.error.HTTPError as e:
         if e.code == 404:
             return response(403, {"error": "Registration blocked: Your email is not found in the verified employee database."})
@@ -186,16 +190,18 @@ def handle_register(body):
         
         # --- NEW: Trigger Just-In-Time Linking ---
         try:
-            # Note: In a real AWS environment, you'd use the internal API Gateway URL or service discovery.
-            # Assuming an internal env variable INDIVIDUALS_SERVICE_URL exists.
-            individuals_url = os.getenv("INDIVIDUALS_SERVICE_URL", "http://localhost:8080/api/individuals-service")
-            req = urllib.request.Request(
-                f"{individuals_url}/link", 
-                data=json.dumps({"email": user["email"], "user_id": user["id"]}).encode('utf-8'),
-                headers={'Content-Type': 'application/json'},
-                method='POST'
-            )
-            urllib.request.urlopen(req, timeout=5)
+            if IS_LOCAL:
+                individuals_url = os.getenv("INDIVIDUALS_SERVICE_URL", "http://localhost:8080/api/individuals-service")
+                req = urllib.request.Request(
+                    f"{individuals_url}/link", 
+                    data=json.dumps({"email": user["email"], "user_id": user["id"]}).encode('utf-8'),
+                    headers={'Content-Type': 'application/json'},
+                    method='POST'
+                )
+                urllib.request.urlopen(req, timeout=5)
+            else:
+                # Direct SQL mapping
+                link_individual_user(PG_CONFIG, user["email"], user["id"])
             logger.info(f"Successfully triggered JIT link for {user['email']}")
         except Exception as link_err:
             # We catch and log this so registration still succeeds even if linking fails
