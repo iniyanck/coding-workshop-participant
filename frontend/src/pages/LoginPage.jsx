@@ -2,13 +2,15 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Card, CardContent, TextField, Button, Typography, Alert,
-  InputAdornment, IconButton, Tabs, Tab, CircularProgress,
+  InputAdornment, IconButton, Tabs, Tab, CircularProgress, useTheme,
 } from '@mui/material';
 import {
   Visibility, VisibilityOff, Groups as GroupsIcon,
   Email as EmailIcon, Person as PersonIcon, Lock as LockIcon,
 } from '@mui/icons-material';
 import authService from '../services/authService';
+import logo from '../assets/logo.png';
+import { useColorMode } from '../contexts/ColorModeContext';
 
 export default function LoginPage() {
   const [tab, setTab] = useState(0);
@@ -17,6 +19,8 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const theme = useTheme();
+  const { mode } = useColorMode();
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -58,31 +62,42 @@ export default function LoginPage() {
   return (
     <Box sx={{
       minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)',
+      background: mode === 'light' 
+        ? 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)'
+        : 'linear-gradient(135deg, #0f172a 0%, #020617 100%)',
       p: 2,
+      position: 'relative',
+      overflow: 'hidden',
     }}>
       <Box sx={{
         position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden',
         '&::before': {
           content: '""', position: 'absolute', width: 500, height: 500,
-          borderRadius: '50%', background: 'rgba(102, 126, 234, 0.15)',
+          borderRadius: '50%', 
+          background: mode === 'light' ? 'rgba(102, 126, 234, 0.1)' : 'rgba(129, 140, 248, 0.1)',
           top: '-10%', right: '-5%', filter: 'blur(60px)',
         },
         '&::after': {
           content: '""', position: 'absolute', width: 400, height: 400,
-          borderRadius: '50%', background: 'rgba(118, 75, 162, 0.15)',
+          borderRadius: '50%', 
+          background: mode === 'light' ? 'rgba(118, 75, 162, 0.1)' : 'rgba(167, 139, 250, 0.1)',
           bottom: '-10%', left: '-5%', filter: 'blur(60px)',
         },
       }} />
 
       <Card sx={{
         width: '100%', maxWidth: 420, borderRadius: 4, position: 'relative',
-        bgcolor: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(20px)',
-        boxShadow: '0 25px 60px rgba(0,0,0,0.3)',
+        bgcolor: mode === 'light' ? 'rgba(255,255,255,0.9)' : 'rgba(30,41,59,0.9)',
+        backdropFilter: 'blur(20px)',
+        boxShadow: mode === 'light' ? '0 25px 60px rgba(0,0,0,0.1)' : '0 25px 60px rgba(0,0,0,0.4)',
+        border: '1px solid',
+        borderColor: 'divider',
       }}>
         <Box sx={{
           p: 4, pb: 2, textAlign: 'center',
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          background: mode === 'light' 
+            ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+            : 'linear-gradient(135deg, #312e81 0%, #1e1b4b 100%)',
           borderRadius: '16px 16px 0 0',
         }}>
           <Box sx={{
@@ -90,7 +105,12 @@ export default function LoginPage() {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             bgcolor: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(10px)',
           }}>
-            <GroupsIcon sx={{ fontSize: 36, color: '#fff' }} />
+            <Box
+              component="img"
+              src={logo}
+              alt="ACME Logo"
+              sx={{ width: 44, height: 44, borderRadius: 2, objectFit: 'contain' }}
+            />
           </Box>
           <Typography variant="h5" sx={{ color: '#fff', fontWeight: 800, mb: 0.5 }}>
             ACME TeamHub
@@ -104,8 +124,8 @@ export default function LoginPage() {
           <Tabs value={tab} onChange={(_, v) => { setTab(v); setError(''); }}
             variant="fullWidth" sx={{
               mb: 3, '& .MuiTab-root': { borderRadius: 2, fontWeight: 600, textTransform: 'none' },
-              '& .Mui-selected': { color: '#667eea' },
-              '& .MuiTabs-indicator': { bgcolor: '#667eea', borderRadius: 2 },
+              '& .Mui-selected': { color: 'primary.main' },
+              '& .MuiTabs-indicator': { bgcolor: 'primary.main', borderRadius: 2 },
             }}
           >
             <Tab label="Sign In" />
@@ -157,11 +177,14 @@ export default function LoginPage() {
               sx={{
                 py: 1.5, borderRadius: 2, fontWeight: 700, fontSize: '0.95rem',
                 textTransform: 'none',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)',
+                background: mode === 'light'
+                  ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                  : 'linear-gradient(135deg, #818cf8 0%, #a78bfa 100%)',
+                boxShadow: mode === 'light' ? '0 4px 15px rgba(102, 126, 234, 0.4)' : '0 4px 15px rgba(0, 0, 0, 0.4)',
                 '&:hover': {
-                  background: 'linear-gradient(135deg, #5a6fd6 0%, #6a4190 100%)',
-                  boxShadow: '0 6px 20px rgba(102, 126, 234, 0.5)',
+                  background: mode === 'light'
+                    ? 'linear-gradient(135deg, #5a6fd6 0%, #6a4190 100%)'
+                    : 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
                 },
               }}
             >
@@ -170,7 +193,7 @@ export default function LoginPage() {
           </form>
 
           {tab === 0 && (
-            <Box sx={{ mt: 3, p: 2, bgcolor: '#f8fafc', borderRadius: 2, border: '1px solid #e2e8f0' }}>
+            <Box sx={{ mt: 3, p: 2, bgcolor: 'action.hover', borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5, fontWeight: 600 }}>
                 Demo Credentials
               </Typography>
@@ -184,3 +207,4 @@ export default function LoginPage() {
     </Box>
   );
 }
+

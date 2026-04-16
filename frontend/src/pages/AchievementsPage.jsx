@@ -4,7 +4,7 @@ import {
   TableHead, TableRow, Paper, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, Snackbar, Alert, Chip, CircularProgress,
   FormControl, InputLabel, Select, MenuItem, Tooltip, InputAdornment,
-  TablePagination, Tabs, Tab,
+  TablePagination, Tabs, Tab, useTheme,
 } from '@mui/material';
 import {
   Add as AddIcon, Delete as DeleteIcon,
@@ -20,6 +20,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 // --- Catalog Tab ---
 
 function CatalogTab() {
+  const theme = useTheme();
   const [catalog, setCatalog] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -78,13 +79,6 @@ function CatalogTab() {
 
   const showSnack = (message, severity = 'success') => setSnack({ open: true, message, severity });
 
-  const scopeColors = {
-    'team': { bg: '#dbeafe', color: '#2563eb' },
-    'individual': { bg: '#fce7f3', color: '#db2777' },
-    'department': { bg: '#dcfce7', color: '#16a34a' },
-    'division': { bg: '#fef3c7', color: '#d97706' },
-  };
-
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
@@ -95,8 +89,12 @@ function CatalogTab() {
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setDialogOpen(true); setErrors({}); }}
             sx={{
               borderRadius: 2, textTransform: 'none', fontWeight: 600, px: 3,
-              background: 'linear-gradient(135deg, #f093fb 0%, #f59e0b 100%)',
-              boxShadow: '0 4px 14px rgba(245,158,11,0.4)',
+              background: theme.palette.mode === 'light'
+                ? 'linear-gradient(135deg, #f093fb 0%, #f59e0b 100%)'
+                : 'linear-gradient(135deg, #701a75 0%, #92400e 100%)',
+              boxShadow: theme.palette.mode === 'light' 
+                ? '0 4px 14px rgba(245,158,11,0.4)'
+                : '0 4px 14px rgba(0,0,0,0.4)',
             }}
           >
             New Definition
@@ -120,7 +118,7 @@ function CatalogTab() {
             <TableContainer>
               <Table>
                 <TableHead>
-                  <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: '#f8fafc', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
+                  <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                     <TableCell>Title</TableCell>
                     <TableCell>Description</TableCell>
                     <TableCell>Recurrence</TableCell>
@@ -150,7 +148,7 @@ function CatalogTab() {
                         </TableCell>
                         <TableCell>
                           {item.recurrence ? (
-                            <Chip label={item.recurrence} size="small" sx={{ borderRadius: 1.5, fontWeight: 500, bgcolor: '#fef3c7', color: '#92400e' }} />
+                            <Chip label={item.recurrence} size="small" sx={{ borderRadius: 1.5, fontWeight: 500, bgcolor: `${theme.palette.warning.main}15`, color: 'warning.main' }} />
                           ) : '—'}
                         </TableCell>
                         <TableCell>
@@ -158,8 +156,14 @@ function CatalogTab() {
                             <Chip label={item.scope} size="small"
                               sx={{
                                 borderRadius: 1.5, fontWeight: 500,
-                                bgcolor: scopeColors[item.scope]?.bg || '#f3f4f6',
-                                color: scopeColors[item.scope]?.color || '#6b7280',
+                                bgcolor: item.scope === 'team' ? `${theme.palette.primary.main}15` : 
+                                         item.scope === 'individual' ? `${theme.palette.secondary.main}15` : 
+                                         item.scope === 'department' ? `${theme.palette.success.main}15` : 
+                                         `${theme.palette.warning.main}15`,
+                                color: item.scope === 'team' ? 'primary.main' : 
+                                       item.scope === 'individual' ? 'secondary.main' : 
+                                       item.scope === 'department' ? 'success.main' : 
+                                       'warning.main',
                               }}
                             />
                           ) : '—'}
@@ -167,7 +171,7 @@ function CatalogTab() {
                         {authService.canDelete() && (
                           <TableCell align="right">
                             <Tooltip title="Delete">
-                              <IconButton size="small" onClick={() => setDeleteTarget(item.id)} sx={{ color: '#ef4444' }}>
+                              <IconButton size="small" onClick={() => setDeleteTarget(item.id)} sx={{ color: 'error.main' }}>
                                 <DeleteIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
@@ -229,7 +233,9 @@ function CatalogTab() {
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDialogOpen(false)} sx={{ borderRadius: 2 }}>Cancel</Button>
           <Button variant="contained" onClick={handleSave} disabled={saving}
-            sx={{ borderRadius: 2, background: 'linear-gradient(135deg, #f093fb 0%, #f59e0b 100%)' }}
+            sx={{ borderRadius: 2, background: theme.palette.mode === 'light'
+                ? 'linear-gradient(135deg, #f093fb 0%, #f59e0b 100%)'
+                : 'linear-gradient(135deg, #701a75 0%, #92400e 100%)' }}
           >
             {saving ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Create'}
           </Button>
@@ -251,6 +257,7 @@ function CatalogTab() {
 // --- Awards Tab ---
 
 function AwardsTab() {
+  const theme = useTheme();
   const [awards, setAwards] = useState([]);
   const [catalog, setCatalog] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -350,8 +357,12 @@ function AwardsTab() {
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpen}
             sx={{
               borderRadius: 2, textTransform: 'none', fontWeight: 600, px: 3,
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              boxShadow: '0 4px 14px rgba(102,126,234,0.4)',
+              background: theme.palette.mode === 'light'
+                ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                : 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)',
+              boxShadow: theme.palette.mode === 'light' 
+                ? '0 4px 14px rgba(102,126,234,0.4)'
+                : '0 4px 14px rgba(0,0,0,0.4)',
             }}
           >
             Grant Award
@@ -384,7 +395,7 @@ function AwardsTab() {
             <TableContainer>
               <Table>
                 <TableHead>
-                  <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: '#f8fafc', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
+                  <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                     <TableCell>Achievement</TableCell>
                     <TableCell>Recurrence</TableCell>
                     <TableCell>Team</TableCell>
@@ -414,17 +425,17 @@ function AwardsTab() {
                         </TableCell>
                         <TableCell>
                           {award.recurrence ? (
-                            <Chip label={award.recurrence} size="small" sx={{ borderRadius: 1.5, fontWeight: 500, bgcolor: '#fef3c7', color: '#92400e' }} />
+                            <Chip label={award.recurrence} size="small" sx={{ borderRadius: 1.5, fontWeight: 500, bgcolor: `${theme.palette.warning.main}15`, color: 'warning.main' }} />
                           ) : '—'}
                         </TableCell>
                         <TableCell>
                           {award.team_id ? (
-                            <Chip label={award.team_name || '—'} size="small" sx={{ borderRadius: 1.5, fontWeight: 500, bgcolor: '#dbeafe', color: '#2563eb' }} />
+                            <Chip label={award.team_name || '—'} size="small" sx={{ borderRadius: 1.5, fontWeight: 500, bgcolor: `${theme.palette.primary.main}15`, color: 'primary.main' }} />
                           ) : '—'}
                         </TableCell>
                         <TableCell>
                           {award.individual_id ? (
-                            <Chip label={award.individual_name || '—'} size="small" sx={{ borderRadius: 1.5, fontWeight: 500, bgcolor: '#fce7f3', color: '#db2777' }} />
+                            <Chip label={award.individual_name || '—'} size="small" sx={{ borderRadius: 1.5, fontWeight: 500, bgcolor: `${theme.palette.secondary.main}15`, color: 'secondary.main' }} />
                           ) : '—'}
                         </TableCell>
                         <TableCell><Typography variant="body2" color="text.secondary">{award.awarded_date}</Typography></TableCell>
@@ -432,7 +443,7 @@ function AwardsTab() {
                         {authService.canDelete() && (
                           <TableCell align="right">
                             <Tooltip title="Revoke">
-                              <IconButton size="small" onClick={() => setDeleteTarget(award.id)} sx={{ color: '#ef4444' }}>
+                              <IconButton size="small" onClick={() => setDeleteTarget(award.id)} sx={{ color: 'error.main' }}>
                                 <DeleteIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
@@ -501,10 +512,16 @@ function AwardsTab() {
           {errors.team_id && <Typography variant="caption" color="error" sx={{ ml: 1.5, mt: -1, mb: 1, display: 'block' }}>{errors.team_id}</Typography>}
 
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-            <TextField label="Date" type="date" value={form.awarded_date} required
+            <TextField 
+              label="Date" 
+              type="date" 
+              value={form.awarded_date} 
+              required
               onChange={(e) => setForm({ ...form, awarded_date: e.target.value })}
-              error={!!errors.awarded_date} helperText={errors.awarded_date}
-              InputLabelProps={{ shrink: true }}
+              error={!!errors.awarded_date} 
+              helperText={errors.awarded_date}
+              slotProps={{ inputLabel: { shrink: true } }}
+              inputProps={{ placeholder: " " }}
               sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
             />
             <TextField label="Location" value={form.location}
@@ -516,7 +533,9 @@ function AwardsTab() {
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDialogOpen(false)} sx={{ borderRadius: 2 }}>Cancel</Button>
           <Button variant="contained" onClick={handleSave} disabled={saving}
-            sx={{ borderRadius: 2, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+            sx={{ borderRadius: 2, background: theme.palette.mode === 'light'
+                ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                : 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)' }}
           >
             {saving ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Grant'}
           </Button>
@@ -538,6 +557,7 @@ function AwardsTab() {
 // --- Main Page ---
 
 export default function AchievementsPage() {
+  const theme = useTheme();
   const [tab, setTab] = useState(0);
 
   return (
@@ -545,7 +565,7 @@ export default function AchievementsPage() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <TrophyIcon sx={{ color: '#f59e0b' }} /> Achievements
+            <TrophyIcon sx={{ color: 'warning.main' }} /> Achievements
           </Typography>
           <Typography variant="body2" color="text.secondary">Manage the achievement catalog and grant awards</Typography>
         </Box>
@@ -556,8 +576,8 @@ export default function AchievementsPage() {
           sx={{
             px: 2,
             '& .MuiTab-root': { borderRadius: 2, fontWeight: 600, textTransform: 'none', minHeight: 48, gap: 1 },
-            '& .Mui-selected': { color: '#f59e0b' },
-            '& .MuiTabs-indicator': { bgcolor: '#f59e0b', borderRadius: 2 },
+            '& .Mui-selected': { color: 'warning.main' },
+            '& .MuiTabs-indicator': { bgcolor: 'warning.main', borderRadius: 2 },
           }}
         >
           <Tab icon={<CatalogIcon />} iconPosition="start" label="Catalog" />
@@ -569,3 +589,4 @@ export default function AchievementsPage() {
     </Box>
   );
 }
+

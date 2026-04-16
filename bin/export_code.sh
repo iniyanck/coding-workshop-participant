@@ -1,81 +1,57 @@
 #!/bin/bash
 
-# Generate a code summary with directory structure and important files
-# Output file: code_summary.txt
-
-OUTPUT_FILE="code_summary.txt"
+OUTPUT_FILE="ai_context.xml"
+# Target specific directories to avoid parsing the whole machine/root
 DIRECTORIES=("backend" "frontend" "infra" "bin")
 
-# Clear or create the output file
+# 1. EXTENDED TRASH LIST: Ensure regex escapes for dots
+IGNORE_DIRS="node_modules|\.git|\.venv|\.terraform|dist|build|__pycache__|psycopg|jwt|\.pytest_cache|\.dist-info|\.libs"
+IGNORE_FILES="package-lock\.json|yarn\.lock|\.DS_Store|.*\.pyc|.*\.zip|.*\.plan\.json|.*\.(svg|png|jpg|jpeg|ico|gif)"
+
+# 2. SOURCE EXTENSIONS
+EXTENSIONS='py|jsx|js|ts|tsx|tf|sh|yml|yaml|json|md'
+
 > "$OUTPUT_FILE"
 
-echo "Generating code summary..." >&2
+echo "🧪 Compiling optimized AI context..." >&2
 
 {
-    echo "============================================"
-    echo "CODE SUMMARY - Generated on $(date)"
-    echo "============================================"
-    echo ""
+    # Wrap the entire output in an XML block for optimal LLM parsing
+    echo "<project>"
     
+    # --- ARCHITECTURE TREE ---
+    # Gives the AI an understanding of your project's skeleton
+    echo "  <architecture_tree>"
     for DIR in "${DIRECTORIES[@]}"; do
         if [ -d "$DIR" ]; then
-            echo ""
-            echo "========================================"
-            echo "DIRECTORY STRUCTURE: $DIR"
-            echo "========================================"
-            tree "$DIR" -L 3 --charset ascii -I 'node_modules|.dist-info|psycopg|jwt|builds|.terraform|.venv' 2>/dev/null || find "$DIR" -type f \( -name "function.py" -o -name "db.py" -o -name "auth.py" -o -name "requirements.txt" -o -name "*.tf" -o -name "*.sh" -o -name "package.json" -o -name "*.md" \) ! -path "*/node_modules/*" ! -path "*/.dist-info/*" ! -path "*/psycopg/*" ! -path "*/jwt/*" ! -path "*/builds/*" ! -path "*/.venv/*" ! -path "*/.terraform/*" | head -50
-            echo ""
+            find "$DIR" -maxdepth 4 -not -path '*/\.*' | \
+            grep -vE "($IGNORE_DIRS)" | grep -vE "($IGNORE_FILES)" | \
+            sed -e "s/[^-][^\/]*\// |/g" -e "s/| [^\/]*$/|-- &/"
         fi
     done
-    
-    echo ""
-    echo "=========================================="
-    echo "IMPORTANT FILES CONTENT"
-    echo "=========================================="
-    echo ""
-    
-    # Include root level important files
-    for FILE in "README.md" "ENVIRONMENT.config"; do
-        if [ -f "$FILE" ]; then
-            echo ""
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "FILE: $FILE"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            cat "$FILE"
-            echo ""
-        fi
-    done
-    
-    for DIR in "${DIRECTORIES[@]}"; do
-        if [ -d "$DIR" ]; then
-            echo ""
-            echo "--- Files from $DIR ---"
-            echo ""
-            
-            # Find important files - ONLY service-level code
-            find "$DIR" -type f \( -name "function.py" -o -name "db.py" -o -name "auth.py" -o -name "requirements.txt" -o -name "*.tf" ! -path "*/builds/*" ! -path "*/.terraform/*" -o -name "App.jsx" -o -name "package.json" \) ! -path "*/node_modules/*" ! -path "*/.dist-info/*" ! -path "*/psycopg/*" ! -path "*/jwt/*" ! -path "*/builds/*" ! -path "*/.venv/*" ! -path "*/.terraform/*" | sort | while read -r FILE; do
-                if [ -f "$FILE" ]; then
-                    # Skip very large files and binary distributions
-                    SIZE=$(du -b "$FILE" | cut -f1)
-                    if [ "$SIZE" -lt 500000 ]; then
-                        echo ""
-                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                        echo "FILE: $FILE"
-                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                        cat "$FILE"
-                        echo ""
-                    fi
-                fi
-            done
-        fi
-    done
-    
-    echo ""
-    echo "=========================================="
-    echo "END OF CODE SUMMARY"
-    echo "=========================================="
+    echo "  </architecture_tree>"
 
+    # --- SOURCE CODE ---
+    echo "  <source_code>"
+    find "${DIRECTORIES[@]}" -type f -regextype posix-extended -regex ".*\.($EXTENSIONS)$" 2>/dev/null | \
+    grep -vE "($IGNORE_DIRS|$IGNORE_FILES)" | while read -r FILE; do
+        
+        # Final safety check: skip known bloated/auto-generated files
+        if [[ "$FILE" == *"typing_extensions.py"* ]]; then continue; fi
+
+        # Use standard XML file tags. This allows an AI agent to easily target file paths for rewrites.
+        echo "    <file path=\"$FILE\">"
+        
+        # Optimization: Use `cat -s` to compress multiple blank lines into a single blank line.
+        # This saves tokens without breaking strings, destroying ASTs, or removing comments.
+        cat -s "$FILE"
+        
+        echo "    </file>"
+    done
+    echo "  </source_code>"
+    echo "</project>"
 } >> "$OUTPUT_FILE"
 
-echo "Code summary generated: $OUTPUT_FILE" >&2
-wc -l "$OUTPUT_FILE" >&2
+echo "✅ Distillation complete! Context saved to $OUTPUT_FILE" >&2
+echo "Final Size: $(du -h "$OUTPUT_FILE" | cut -f1)" >&2
+echo "Total Lines: $(wc -l < "$OUTPUT_FILE")" >&2

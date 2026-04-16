@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Box, Typography, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, IconButton, Snackbar, Alert, Chip,
-  CircularProgress, FormControl, Select, MenuItem, Tooltip,
+  CircularProgress, FormControl, Select, MenuItem, Tooltip, useTheme,
 } from '@mui/material';
 import {
   Delete as DeleteIcon, AdminPanelSettings as AdminIcon,
@@ -10,14 +10,8 @@ import {
 import authService from '../services/authService';
 import ConfirmDialog from '../components/ConfirmDialog';
 
-const roleColors = {
-  admin: { bg: '#fef2f2', color: '#ef4444' },
-  hr: { bg: '#eff6ff', color: '#3b82f6' },
-  manager: { bg: '#fffbeb', color: '#f59e0b' },
-  employee: { bg: '#f3f4f6', color: '#6b7280' },
-};
-
 export default function UsersPage() {
+  const theme = useTheme();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -60,11 +54,18 @@ export default function UsersPage() {
 
   const showSnack = (message, severity = 'success') => setSnack({ open: true, message, severity });
 
+  const roleColors = {
+    admin: { bg: `${theme.palette.error.main}15`, color: 'error.main' },
+    hr: { bg: `${theme.palette.primary.main}15`, color: 'primary.main' },
+    manager: { bg: `${theme.palette.warning.main}15`, color: 'warning.main' },
+    employee: { bg: 'action.hover', color: 'text.secondary' },
+  };
+
   return (
     <Box>
       <Box sx={{ mb: 3 }}>
         <Typography variant="h5" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <AdminIcon sx={{ color: '#ef4444' }} /> User Management
+          <AdminIcon sx={{ color: 'error.main' }} /> User Management
         </Typography>
         <Typography variant="body2" color="text.secondary">Manage user accounts and role designations</Typography>
       </Box>
@@ -76,7 +77,7 @@ export default function UsersPage() {
           <TableContainer>
             <Table>
               <TableHead>
-                <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: '#f8fafc', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
+                <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                   <TableCell>Username</TableCell>
                   <TableCell>Email</TableCell>
                   <TableCell>Designation</TableCell>
@@ -98,8 +99,8 @@ export default function UsersPage() {
                         <Chip label={user.designation} size="small"
                           sx={{
                             borderRadius: 1.5, fontWeight: 500,
-                            bgcolor: user.color_hex ? `${user.color_hex}18` : '#f3f4f6',
-                            color: user.color_hex || '#6b7280',
+                            bgcolor: user.color_hex ? `${user.color_hex}18` : 'action.hover',
+                            color: user.color_hex || 'text.secondary',
                             border: user.color_hex ? `1px solid ${user.color_hex}30` : 'none',
                           }}
                         />
@@ -137,7 +138,7 @@ export default function UsersPage() {
                     <TableCell align="right">
                       {user.id !== currentUser?.id && (
                         <Tooltip title="Delete user">
-                          <IconButton size="small" onClick={() => setDeleteTarget(user.id)} sx={{ color: '#ef4444' }}>
+                          <IconButton size="small" onClick={() => setDeleteTarget(user.id)} sx={{ color: 'error.main' }}>
                             <DeleteIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
@@ -162,3 +163,4 @@ export default function UsersPage() {
     </Box>
   );
 }
+

@@ -3,7 +3,7 @@ import {
   Box, Button, Typography, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, Snackbar, Alert, Chip, CircularProgress,
-  Tooltip, Divider, Checkbox, FormControlLabel,
+  Tooltip, Divider, Checkbox, FormControlLabel, useTheme,
 } from '@mui/material';
 import {
   Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon,
@@ -26,6 +26,7 @@ const INITIAL_HRIS_DATA = [
 const EMPTY_FORM = { employee_id: '', email: '', first_name: '', last_name: '', is_direct_staff: true, designation: 'employee' };
 
 export default function HRISConsolePage() {
+  const theme = useTheme();
   const [hrisData, setHrisData] = useState(INITIAL_HRIS_DATA);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState(null);
@@ -123,7 +124,7 @@ export default function HRISConsolePage() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <StorageIcon sx={{ color: '#10b981' }} /> HRIS Simulation Console
+            <StorageIcon sx={{ color: 'success.main' }} /> HRIS Simulation Console
           </Typography>
           <Typography variant="body2" color="text.secondary">
             Simulate the external HRIS database and test employee sync operations
@@ -134,16 +135,19 @@ export default function HRISConsolePage() {
       {/* Control Panel */}
       <Paper sx={{
         borderRadius: 3, p: 3, mb: 3,
-        background: 'linear-gradient(135deg, rgba(16,185,129,0.06) 0%, rgba(5,150,105,0.06) 100%)',
-        border: '1px solid rgba(16,185,129,0.15)',
+        background: theme.palette.mode === 'light'
+          ? `linear-gradient(135deg, ${theme.palette.success.main}10 0%, ${theme.palette.success.dark}10 100%)`
+          : `linear-gradient(135deg, ${theme.palette.success.main}15 0%, ${theme.palette.success.dark}15 100%)`,
+        border: '1px solid',
+        borderColor: `${theme.palette.success.main}30`,
       }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-              <SyncIcon sx={{ color: '#10b981' }} /> Sync Control
+              <SyncIcon sx={{ color: 'success.main' }} /> Sync Control
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Push {hrisData.length} records to the Individuals Service via <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: 4, fontSize: '0.8em' }}>/api/individuals-service/import</code>
+              Push {hrisData.length} records to the Individuals Service via <code style={{ background: theme.palette.action.hover, padding: '2px 6px', borderRadius: 4, fontSize: '0.8em' }}>/api/individuals-service/import</code>
             </Typography>
           </Box>
           <Button
@@ -153,12 +157,20 @@ export default function HRISConsolePage() {
             disabled={syncing}
             sx={{
               borderRadius: 2, textTransform: 'none', fontWeight: 700, px: 4, py: 1.2,
-              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-              boxShadow: '0 4px 14px rgba(16,185,129,0.4)',
+              background: theme.palette.mode === 'light'
+                ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                : 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+              boxShadow: theme.palette.mode === 'light' 
+                ? '0 4px 14px rgba(16,185,129,0.4)'
+                : '0 4px 14px rgba(0,0,0,0.4)',
               fontSize: '0.95rem',
               '&:hover': {
-                background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-                boxShadow: '0 6px 20px rgba(16,185,129,0.5)',
+                background: theme.palette.mode === 'light'
+                  ? 'linear-gradient(135deg, #059669 0%, #047857 100%)'
+                  : 'linear-gradient(135deg, #047857 0%, #064e3b 100%)',
+                boxShadow: theme.palette.mode === 'light'
+                  ? '0 6px 20px rgba(16,185,129,0.5)'
+                  : '0 6px 20px rgba(0,0,0,0.5)',
               },
             }}
           >
@@ -190,14 +202,14 @@ export default function HRISConsolePage() {
               Simulated HRIS Records
             </Typography>
             <Chip label={hrisData.length} size="small"
-              sx={{ fontWeight: 700, bgcolor: '#dcfce7', color: '#16a34a', minWidth: 28 }}
+              sx={{ fontWeight: 700, bgcolor: `${theme.palette.success.main}20`, color: 'success.main', minWidth: 28 }}
             />
           </Box>
           <Button variant="outlined" startIcon={<AddIcon />} onClick={() => handleOpen()}
             sx={{
               borderRadius: 2, textTransform: 'none', fontWeight: 600,
-              borderColor: '#10b981', color: '#10b981',
-              '&:hover': { borderColor: '#059669', bgcolor: 'rgba(16,185,129,0.04)' },
+              borderColor: 'success.main', color: 'success.main',
+              '&:hover': { borderColor: 'success.dark', bgcolor: `${theme.palette.success.main}08` },
             }}
           >
             Add Employee
@@ -207,7 +219,7 @@ export default function HRISConsolePage() {
         <TableContainer>
           <Table>
             <TableHead>
-              <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: '#f8fafc', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
+              <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                 <TableCell>Employee ID</TableCell>
                 <TableCell>Name</TableCell>
                 <TableCell>Email</TableCell>
@@ -225,10 +237,10 @@ export default function HRISConsolePage() {
                 </TableRow>
               ) : (
                 hrisData.map((record, index) => (
-                  <TableRow key={`${record.employee_id}-${index}`} hover sx={{ '&:hover': { bgcolor: '#f8fafc' }, transition: 'background 0.2s' }}>
+                  <TableRow key={`${record.employee_id}-${index}`} hover sx={{ transition: 'background 0.2s' }}>
                     <TableCell>
                       <Chip label={record.employee_id} size="small"
-                        sx={{ borderRadius: 1.5, fontWeight: 600, fontFamily: 'monospace', bgcolor: '#dcfce7', color: '#16a34a' }}
+                        sx={{ borderRadius: 1.5, fontWeight: 600, fontFamily: 'monospace', bgcolor: `${theme.palette.success.main}20`, color: 'success.main' }}
                       />
                     </TableCell>
                     <TableCell>
@@ -246,19 +258,19 @@ export default function HRISConsolePage() {
                       <Chip size="small" label={record.is_direct_staff ? 'Direct' : 'Non-Direct'}
                         sx={{
                           borderRadius: 1.5, fontWeight: 500, fontSize: '0.7rem',
-                          bgcolor: record.is_direct_staff ? '#dbeafe' : '#fef3c7',
-                          color: record.is_direct_staff ? '#2563eb' : '#d97706',
+                          bgcolor: record.is_direct_staff ? `${theme.palette.primary.main}15` : `${theme.palette.warning.main}15`,
+                          color: record.is_direct_staff ? 'primary.main' : 'warning.main',
                         }}
                       />
                     </TableCell>
                     <TableCell align="right">
                       <Tooltip title="Edit">
-                        <IconButton size="small" onClick={() => handleOpen(index)} sx={{ color: '#667eea', mr: 0.5 }}>
+                        <IconButton size="small" onClick={() => handleOpen(index)} sx={{ color: 'primary.main', mr: 0.5 }}>
                           <EditIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Remove">
-                        <IconButton size="small" onClick={() => handleDelete(index)} sx={{ color: '#ef4444' }}>
+                        <IconButton size="small" onClick={() => handleDelete(index)} sx={{ color: 'error.main' }}>
                           <DeleteIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -272,7 +284,7 @@ export default function HRISConsolePage() {
       </Paper>
 
       {/* How it works */}
-      <Paper sx={{ borderRadius: 3, p: 3, mt: 3, bgcolor: '#f8fafc', border: '1px solid #e2e8f0' }}>
+      <Paper sx={{ borderRadius: 3, p: 3, mt: 3, bgcolor: 'action.hover', border: '1px solid', borderColor: 'divider' }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
           How This Works
         </Typography>
@@ -285,7 +297,7 @@ export default function HRISConsolePage() {
           ].map(item => (
             <Box key={item.step} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
               <Chip label={item.step} size="small"
-                sx={{ fontWeight: 700, minWidth: 28, bgcolor: '#10b981', color: '#fff', fontSize: '0.7rem' }}
+                sx={{ fontWeight: 700, minWidth: 28, bgcolor: 'success.main', color: '#fff', fontSize: '0.7rem' }}
               />
               <Typography variant="body2" color="text.secondary">{item.text}</Typography>
             </Box>
@@ -341,7 +353,9 @@ export default function HRISConsolePage() {
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDialogOpen(false)} sx={{ borderRadius: 2 }}>Cancel</Button>
           <Button variant="contained" onClick={handleSave}
-            sx={{ borderRadius: 2, background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}
+            sx={{ borderRadius: 2, background: theme.palette.mode === 'light'
+                ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                : 'linear-gradient(135deg, #059669 0%, #047857 100%)' }}
           >
             {editingIndex !== null ? 'Update' : 'Add'}
           </Button>
@@ -355,3 +369,4 @@ export default function HRISConsolePage() {
     </Box>
   );
 }
+

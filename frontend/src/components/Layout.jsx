@@ -4,14 +4,19 @@ import {
   AppBar, Box, CssBaseline, Drawer, IconButton, List, ListItem,
   ListItemButton, ListItemIcon, ListItemText, Toolbar, Typography,
   Avatar, Menu, MenuItem, Divider, Chip, useMediaQuery, useTheme,
+  Tooltip,
 } from '@mui/material';
 import {
   Menu as MenuIcon, Dashboard as DashboardIcon, People as PeopleIcon,
   Groups as GroupsIcon, EmojiEvents as TrophyIcon, Logout as LogoutIcon,
   Person as PersonIcon, AdminPanelSettings as AdminIcon,
-  CloudSync as SyncIcon,
+  CloudSync as SyncIcon, Psychology as SkillsIcon,
+  Assignment as PlanIcon, LightMode as LightIcon,
+  DarkMode as DarkIcon,
 } from '@mui/icons-material';
 import authService from '../services/authService';
+import logo from '../assets/logo.png';
+import { useColorMode } from '../contexts/ColorModeContext';
 
 const DRAWER_WIDTH = 260;
 
@@ -19,6 +24,8 @@ const navItems = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
   { text: 'Individuals', icon: <PeopleIcon />, path: '/individuals' },
   { text: 'Teams', icon: <GroupsIcon />, path: '/teams' },
+  { text: 'Skills', icon: <SkillsIcon />, path: '/skills' },
+  { text: 'Dev Plans', icon: <PlanIcon />, path: '/dev-plans' },
   { text: 'Achievements', icon: <TrophyIcon />, path: '/achievements' },
 ];
 
@@ -28,6 +35,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
+  const { mode, toggleColorMode } = useColorMode();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const user = authService.getUser();
 
@@ -41,19 +49,28 @@ export default function Layout() {
   };
 
   const roleColors = {
-    admin: '#ef4444',
-    hr: '#3b82f6',
-    manager: '#f59e0b',
-    employee: '#6b7280',
+    admin: theme.palette.error.main,
+    hr: theme.palette.info.main,
+    manager: theme.palette.warning.main,
+    employee: theme.palette.text.secondary,
   };
 
   const drawer = (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'background.paper' }}>
       <Box sx={{
         p: 3, display: 'flex', alignItems: 'center', gap: 1.5,
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        background: mode === 'light' 
+          ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+          : 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+        borderBottom: mode === 'dark' ? '1px solid' : 'none',
+        borderColor: 'divider',
       }}>
-        <GroupsIcon sx={{ color: '#fff', fontSize: 32 }} />
+        <Box
+          component="img"
+          src={logo}
+          alt="ACME Logo"
+          sx={{ width: 36, height: 36, borderRadius: 1.5, objectFit: 'contain' }}
+        />
         <Box>
           <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, lineHeight: 1.2, fontSize: '1rem' }}>
             ACME TeamHub
@@ -73,10 +90,10 @@ export default function Layout() {
                 sx={{
                   borderRadius: 2,
                   transition: 'all 0.2s',
-                  bgcolor: isActive ? 'rgba(102, 126, 234, 0.12)' : 'transparent',
-                  color: isActive ? '#667eea' : 'text.secondary',
+                  bgcolor: isActive ? `${theme.palette.primary.main}18` : 'transparent',
+                  color: isActive ? 'primary.main' : 'text.secondary',
                   '&:hover': {
-                    bgcolor: isActive ? 'rgba(102, 126, 234, 0.18)' : 'action.hover',
+                    bgcolor: isActive ? `${theme.palette.primary.main}25` : 'action.hover',
                     transform: 'translateX(4px)',
                   },
                 }}
@@ -96,9 +113,9 @@ export default function Layout() {
                 sx={{
                   borderRadius: 2,
                   transition: 'all 0.2s',
-                  bgcolor: location.pathname === '/users' ? 'rgba(239, 68, 68, 0.1)' : 'transparent',
-                  color: location.pathname === '/users' ? '#ef4444' : 'text.secondary',
-                  '&:hover': { bgcolor: 'rgba(239, 68, 68, 0.08)', transform: 'translateX(4px)' },
+                  bgcolor: location.pathname === '/users' ? `${theme.palette.error.main}10` : 'transparent',
+                  color: location.pathname === '/users' ? 'error.main' : 'text.secondary',
+                  '&:hover': { bgcolor: `${theme.palette.error.main}15`, transform: 'translateX(4px)' },
                 }}
               >
                 <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><AdminIcon /></ListItemIcon>
@@ -111,9 +128,9 @@ export default function Layout() {
                 sx={{
                   borderRadius: 2,
                   transition: 'all 0.2s',
-                  bgcolor: location.pathname === '/hris-console' ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
-                  color: location.pathname === '/hris-console' ? '#10b981' : 'text.secondary',
-                  '&:hover': { bgcolor: 'rgba(16, 185, 129, 0.08)', transform: 'translateX(4px)' },
+                  bgcolor: location.pathname === '/hris-console' ? `${theme.palette.success.main}10` : 'transparent',
+                  color: location.pathname === '/hris-console' ? 'success.main' : 'text.secondary',
+                  '&:hover': { bgcolor: `${theme.palette.success.main}15`, transform: 'translateX(4px)' },
                 }}
               >
                 <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}><SyncIcon /></ListItemIcon>
@@ -127,7 +144,7 @@ export default function Layout() {
   );
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#f8fafc' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
       <CssBaseline />
       <AppBar
         position="fixed"
@@ -135,7 +152,6 @@ export default function Layout() {
         sx={{
           width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
           ml: { md: `${DRAWER_WIDTH}px` },
-          bgcolor: 'rgba(255,255,255,0.8)',
           backdropFilter: 'blur(20px)',
           borderBottom: '1px solid',
           borderColor: 'divider',
@@ -146,20 +162,29 @@ export default function Layout() {
             <MenuIcon />
           </IconButton>
           <Box sx={{ flex: 1 }} />
+          
+          <Tooltip title={`Switch to ${mode === 'light' ? 'dark' : 'light'} mode`}>
+            <IconButton onClick={toggleColorMode} color="inherit" sx={{ mr: 1 }}>
+              {mode === 'light' ? <DarkIcon /> : <LightIcon />}
+            </IconButton>
+          </Tooltip>
+
           <Chip
             label={user?.role?.toUpperCase()}
             size="small"
             sx={{
               mr: 2, fontWeight: 700, fontSize: '0.65rem', letterSpacing: 1,
-              bgcolor: `${roleColors[user?.role] || '#6b7280'}18`,
-              color: roleColors[user?.role] || '#6b7280',
-              border: `1px solid ${roleColors[user?.role] || '#6b7280'}30`,
+              bgcolor: `${roleColors[user?.role] || theme.palette.text.secondary}18`,
+              color: roleColors[user?.role] || theme.palette.text.secondary,
+              border: `1px solid ${roleColors[user?.role] || theme.palette.text.secondary}30`,
             }}
           />
           <IconButton onClick={handleMenuOpen} sx={{ p: 0 }}>
             <Avatar sx={{
               width: 36, height: 36, fontSize: '0.875rem', fontWeight: 700,
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              background: mode === 'light' 
+                ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                : 'linear-gradient(135deg, #818cf8 0%, #a78bfa 100%)',
             }}>
               {user?.username?.charAt(0)?.toUpperCase() || 'U'}
             </Avatar>
@@ -194,7 +219,7 @@ export default function Layout() {
         </Drawer>
         <Drawer
           variant="permanent"
-          sx={{ display: { xs: 'none', md: 'block' }, '& .MuiDrawer-paper': { boxSizing: 'border-box', width: DRAWER_WIDTH, border: 'none', boxShadow: '1px 0 0 0 rgba(0,0,0,0.05)' } }}
+          sx={{ display: { xs: 'none', md: 'block' }, '& .MuiDrawer-paper': { boxSizing: 'border-box', width: DRAWER_WIDTH, border: 'none', borderRight: '1px solid', borderColor: 'divider' } }}
           open
         >
           {drawer}
@@ -207,3 +232,4 @@ export default function Layout() {
     </Box>
   );
 }
+

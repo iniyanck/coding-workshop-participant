@@ -4,7 +4,7 @@ import {
   TableHead, TableRow, Paper, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, Snackbar, Alert, Chip, CircularProgress,
   FormControl, InputLabel, Select, MenuItem, Tooltip, InputAdornment,
-  TablePagination,
+  TablePagination, useTheme,
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
@@ -21,6 +21,7 @@ import MapIcon from '@mui/icons-material/Map';
 const EMPTY_FORM = { name: '', unit_type: 'Team', description: '', location: '', leader_id: '', org_leader_id: '', parent_team_id: '' };
 
 export default function TeamsPage() {
+  const theme = useTheme();
   const [teams, setTeams] = useState([]);
   const [individuals, setIndividuals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -138,7 +139,7 @@ export default function TeamsPage() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <GroupsIcon sx={{ color: '#f5576c' }} /> Teams
+            <GroupsIcon sx={{ color: 'secondary.main' }} /> Teams
           </Typography>
           <Typography variant="body2" color="text.secondary">Manage teams and their structure</Typography>
         </Box>
@@ -146,8 +147,12 @@ export default function TeamsPage() {
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpen()}
             sx={{
               borderRadius: 2, textTransform: 'none', fontWeight: 600, px: 3,
-              background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-              boxShadow: '0 4px 14px rgba(245,87,108,0.4)',
+              background: theme.palette.mode === 'light'
+                ? 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)'
+                : 'linear-gradient(135deg, #4c0519 0%, #9f1239 100%)',
+              boxShadow: theme.palette.mode === 'light' 
+                ? '0 4px 14px rgba(245,87,108,0.4)'
+                : '0 4px 14px rgba(0,0,0,0.4)',
             }}
           >
             Add Team
@@ -171,7 +176,7 @@ export default function TeamsPage() {
             <TableContainer>
               <Table>
                 <TableHead>
-                  <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: '#f8fafc', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
+                  <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: 'action.hover', color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 } }}>
                     <TableCell>Team Name</TableCell>
                     <TableCell>Type</TableCell>
                     <TableCell>Location</TableCell>
@@ -198,8 +203,8 @@ export default function TeamsPage() {
                         sx={{ 
                           transition: 'background 0.2s', 
                           cursor: 'pointer',
-                          '&.Mui-selected': { bgcolor: 'rgba(102, 126, 234, 0.08)' },
-                          '&.Mui-selected:hover': { bgcolor: 'rgba(102, 126, 234, 0.12)' }
+                          '&.Mui-selected': { bgcolor: 'action.selected' },
+                          '&.Mui-selected:hover': { bgcolor: 'action.focus' }
                         }}
                       >
                         <TableCell>
@@ -208,8 +213,8 @@ export default function TeamsPage() {
                         <TableCell>
                           <Chip label={team.unit_type || 'Team'} size="small"
                             sx={{ borderRadius: 1.5, fontWeight: 500, fontSize: '0.7rem',
-                              bgcolor: team.unit_type === 'Division' ? '#fce7f3' : team.unit_type === 'Department' ? '#dbeafe' : '#dcfce7',
-                              color: team.unit_type === 'Division' ? '#db2777' : team.unit_type === 'Department' ? '#2563eb' : '#16a34a',
+                              bgcolor: team.unit_type === 'Division' ? `${theme.palette.secondary.main}15` : team.unit_type === 'Department' ? `${theme.palette.primary.main}15` : `${theme.palette.success.main}15`,
+                              color: team.unit_type === 'Division' ? 'secondary.main' : team.unit_type === 'Department' ? 'primary.main' : 'success.main',
                             }}
                           />
                         </TableCell>
@@ -235,15 +240,15 @@ export default function TeamsPage() {
                         </TableCell>
                         <TableCell align="center">
                           <Chip label={team.member_count || 0} size="small"
-                            sx={{ fontWeight: 700, bgcolor: '#ede9fe', color: '#7c3aed', minWidth: 36 }} />
+                            sx={{ fontWeight: 700, bgcolor: `${theme.palette.secondary.main}15`, color: 'secondary.main', minWidth: 36 }} />
                         </TableCell>
                         {(authService.canUpdate() || authService.canDelete()) && (
                           <TableCell align="right">
                             {authService.canUpdate() && (
-                              <Tooltip title="Edit"><IconButton size="small" onClick={(e) => { e.stopPropagation(); handleOpen(team); }} sx={{ color: '#667eea' }}><EditIcon fontSize="small" /></IconButton></Tooltip>
+                              <Tooltip title="Edit"><IconButton size="small" onClick={(e) => { e.stopPropagation(); handleOpen(team); }} sx={{ color: 'primary.main' }}><EditIcon fontSize="small" /></IconButton></Tooltip>
                             )}
                             {authService.canDelete() && (
-                              <Tooltip title="Delete"><IconButton size="small" onClick={(e) => { e.stopPropagation(); setDeleteTarget(team.id); }} sx={{ color: '#ef4444' }}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+                              <Tooltip title="Delete"><IconButton size="small" onClick={(e) => { e.stopPropagation(); setDeleteTarget(team.id); }} sx={{ color: 'error.main' }}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
                             )}
                           </TableCell>
                         )}
@@ -265,7 +270,7 @@ export default function TeamsPage() {
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <MapIcon sx={{ color: '#667eea' }} /> Team Distribution: {selectedTeam.name}
+                <MapIcon sx={{ color: 'primary.main' }} /> Team Distribution: {selectedTeam.name}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Visualizing {individuals.filter(i => i.team_id === selectedTeam.id).length} team members
@@ -348,7 +353,10 @@ export default function TeamsPage() {
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDialogOpen(false)} sx={{ borderRadius: 2 }}>Cancel</Button>
           <Button variant="contained" onClick={handleSave} disabled={saving}
-            sx={{ borderRadius: 2, background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }}
+            sx={{ borderRadius: 2, background: theme.palette.mode === 'light'
+                ? 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)'
+                : 'linear-gradient(135deg, #4c0519 0%, #9f1239 100%)'
+            }}
           >
             {saving ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : (editingId ? 'Update' : 'Create')}
           </Button>
@@ -366,3 +374,4 @@ export default function TeamsPage() {
     </Box>
   );
 }
+

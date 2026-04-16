@@ -87,8 +87,14 @@ def get_all_teams(config, user=None):
                    COALESCE(m.member_count, 0) as member_count
             FROM teams t
             LEFT JOIN (
-                SELECT team_id, COUNT(*) as member_count
-                FROM individuals
+                SELECT team_id, COUNT(DISTINCT member_id) as member_count
+                FROM (
+                    SELECT team_id, id as member_id FROM individuals WHERE is_active = true
+                    UNION
+                    SELECT t2.id as team_id, i2.id as member_id FROM teams t2
+                    JOIN individuals i2 ON i2.id = t2.leader_id
+                    WHERE t2.leader_id IS NOT NULL
+                ) combined
                 GROUP BY team_id
             ) m ON t.id = m.team_id
             WHERE 1=1
@@ -122,8 +128,14 @@ def get_team_by_id(config, team_id):
                       COALESCE(m.member_count, 0) as member_count
                FROM teams t
                LEFT JOIN (
-                   SELECT team_id, COUNT(*) as member_count
-                   FROM individuals
+                   SELECT team_id, COUNT(DISTINCT member_id) as member_count
+                   FROM (
+                       SELECT team_id, id as member_id FROM individuals WHERE is_active = true
+                       UNION
+                       SELECT t2.id as team_id, i2.id as member_id FROM teams t2
+                       JOIN individuals i2 ON i2.id = t2.leader_id
+                       WHERE t2.leader_id IS NOT NULL
+                   ) combined
                    GROUP BY team_id
                ) m ON t.id = m.team_id
                WHERE t.id = %s""",

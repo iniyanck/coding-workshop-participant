@@ -18,9 +18,9 @@ const TeamMap = ({ individuals, teamInfo }) => {
 
   const getMarkerStyle = (person) => {
     const isLeader = person.id === teamInfo?.leader_id || person.id === teamInfo?.org_leader_id;
-    if (isLeader) return { color: '#D32F2F', icon: <StarIcon fontSize="large" sx={{ color: '#D32F2F' }}/>, label: 'Leader' };
-    if (!person.is_direct_staff) return { color: '#F57C00', icon: <PersonPinCircleIcon fontSize="large" sx={{ color: '#F57C00' }}/>, label: 'Indirect Staff' };
-    return { color: '#1976D2', icon: <PersonPinCircleIcon fontSize="large" sx={{ color: '#1976D2' }}/>, label: 'Direct Staff' };
+    if (isLeader) return { color: theme.palette.error.main, icon: <StarIcon fontSize="large" sx={{ color: 'error.main' }}/>, label: 'Leader' };
+    if (!person.is_direct_staff) return { color: theme.palette.warning.main, icon: <PersonPinCircleIcon fontSize="large" sx={{ color: 'warning.main' }}/>, label: 'Indirect Staff' };
+    return { color: theme.palette.primary.main, icon: <PersonPinCircleIcon fontSize="large" sx={{ color: 'primary.main' }}/>, label: 'Direct Staff' };
   };
 
   const mappableIndividuals = useMemo(() => {
@@ -29,17 +29,30 @@ const TeamMap = ({ individuals, teamInfo }) => {
 
   if (mappableIndividuals.length === 0) {
     return (
-      <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3, bgcolor: '#f8fafc' }}>
+      <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3, bgcolor: 'action.hover' }}>
         <Typography color="text.secondary">No location data available for this team yet.</Typography>
       </Paper>
     );
   }
 
+  const mapStyle = theme.palette.mode === 'light' 
+    ? "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json"
+    : "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+
   return (
-    <Box sx={{ height: 450, width: '100%', borderRadius: 3, overflow: 'hidden', position: 'relative', border: `1px solid ${theme.palette.divider}`, boxShadow: '0 10px 30px rgba(0,0,0,0.1)' }}>
+    <Box sx={{ 
+      height: 450, 
+      width: '100%', 
+      borderRadius: 3, 
+      overflow: 'hidden', 
+      position: 'relative', 
+      border: '1px solid',
+      borderColor: 'divider',
+      boxShadow: theme.palette.mode === 'light' ? '0 10px 30px rgba(0,0,0,0.1)' : '0 10px 30px rgba(0,0,0,0.4)' 
+    }}>
       <Map
         initialViewState={initialViewState}
-        mapStyle="https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json"
+        mapStyle={mapStyle}
       >
         <NavigationControl position="top-right" />
 
@@ -69,7 +82,7 @@ const TeamMap = ({ individuals, teamInfo }) => {
             closeOnClick={false}
             style={{ zIndex: 1000 }}
           >
-            <Box sx={{ p: 1, minWidth: 140 }}>
+            <Box sx={{ p: 1, minWidth: 140, color: 'text.primary' }}>
               <Typography variant="subtitle2" fontWeight="bold">
                 {selectedPerson.first_name} {selectedPerson.last_name}
               </Typography>
@@ -88,3 +101,4 @@ const TeamMap = ({ individuals, teamInfo }) => {
 };
 
 export default TeamMap;
+
