@@ -14,7 +14,7 @@ import os
 import urllib.request
 import urllib.parse
 import urllib.error
-from db import init_table, get_user_by_username, create_user, get_all_users, update_user_designation, delete_user, get_designation_by_role, get_user_by_id, check_individual_exists, link_individual_user
+from db import init_table, get_user_by_username, create_user, get_all_users, update_user_role, delete_user, get_user_by_id, check_individual_exists, link_individual_user
 from auth import hash_password, verify_password, create_token, verify_token
 
 logger = logging.getLogger()
@@ -32,7 +32,12 @@ PG_CONFIG = (
 if not IS_LOCAL:
     PG_CONFIG += " sslmode=require"
 
-VALID_ROLES = ["admin", "hr", "manager", "employee"]
+ROLE_LEVELS = {
+    "admin": 100,
+    "hr": 70,
+    "manager": 50,
+    "employee": 10
+}
 
 _initialized = False
 
@@ -89,7 +94,7 @@ def handler(event=None, context=None):
                 return response(401, {"error": "Authentication required"})
             if user["role"] not in ["admin", "hr"]:
                 return response(403, {"error": "Insufficient permissions"})
-            return handle_update_designation(resource_id, body, user)
+            return handle_update_role(resource_id, body, user)
         elif method == "DELETE":
             # Self-Deletion Route
             if path.endswith("/me"):
@@ -180,11 +185,16 @@ def handle_register(body):
 
     password_hash = hash_password(body["password"])
     
-    # Preemptive role assignment
-    assigned_role = hris_designation if hris_designation in VALID_ROLES else "employee"
-    
-    # If the user provides a role, only allow them to override it if it is safe, otherwise follow HRIS
-    # Actually just force HRIS designation since it's an enterprise system:
+    # Preemptive role assignment based on HRIS Designation
+    assigned_role = "employee"
+    if hris_designation:
+        desig_lower = hris_designation.lower()
+        if "admin" in desig_lower or "director" in desig_lower or "vp" in desig_lower:
+            assigned_role = "admin"
+        elif "hr " in desig_lower or "human resources" in desig_lower or "people" in desig_lower:
+            assigned_role = "hr"
+        elif "manager" in desig_lower or "lead" in desig_lower or "head" in desig_lower:
+            assigned_role = "manager"
     
     user_data = {
         "username": body["username"],
@@ -250,47 +260,38 @@ def handle_verify(headers):
     return response(200, {"user": user})
 
 
-def handle_update_designation(target_user_id, body, requesting_user):
-    """Update a user's designation enforcing hierarchy rules."""
+def handle_update_role(target_user_id, body, requesting_user):
+    """Update a user's role enforcing hierarchy rules."""
     new_role = body.get("role", "").strip()
     
-    if new_role not in VALID_ROLES:
-        return response(400, {"error": f"Invalid role. Must be one of {VALID_ROLES}"})
+    if new_role not in ROLE_LEVELS:
+        return response(400, {"error": f"Invalid role. Must be one of {list(ROLE_LEVELS.keys())}"})
 
-    # 1. Get the new designation ID and Level
-    new_designation = get_designation_by_role(PG_CONFIG, new_role)
-    if not new_designation:
-        return response(404, {"error": "Designation not found in database"})
-        
-    # 2. Get Target User's Current Level
+    # 1. Get Target User's Current Level
     target_user = get_user_by_id(PG_CONFIG, target_user_id)
     if not target_user:
         return response(404, {"error": "Target user not found"})
         
-    target_current_designation = get_designation_by_role(PG_CONFIG, target_user["role"])
-    target_level = target_current_designation["level"] if target_current_designation else 0
+    target_level = ROLE_LEVELS.get(target_user["role"], 0)
+    req_level = ROLE_LEVELS.get(requesting_user["role"], 0)
+    new_level = ROLE_LEVELS.get(new_role, 0)
 
-    # 3. Get Requesting User's Level
-    req_designation = get_designation_by_role(PG_CONFIG, requesting_user["role"])
-    req_level = req_designation["level"] if req_designation else 0
-
-    # 4. Enforce HR Logic
+    # 2. Enforce HR Logic
     if requesting_user["role"] == "hr":
-        # NEW: Location Attribute Check
         if target_user.get("location") != requesting_user.get("location"):
             return response(403, {"error": "HR domain restriction: You can only modify users within your assigned location."})
         
-        # HR cannot modify admins or other HR members
         if target_level >= req_level:
             return response(403, {"error": "You do not have permission to modify users at or above your level."})
-        # HR cannot promote someone to a level equal to or higher than their own
-        if new_designation["level"] >= req_level:
+            
+        if new_level >= req_level:
             return response(403, {"error": "You cannot promote a user to this level."})
 
-    # 5. Execute Update
-    updated_user = update_user_designation(PG_CONFIG, target_user_id, new_designation["id"])
+    # 3. Execute Update
+    from db import update_user_role
+    updated_user = update_user_role(PG_CONFIG, target_user_id, new_role)
     if not updated_user:
-        return response(404, {"error": "Failed to update user designation"})
+        return response(404, {"error": "Failed to update user role"})
     return response(200, updated_user)
 
 

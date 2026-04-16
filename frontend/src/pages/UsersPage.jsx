@@ -95,16 +95,13 @@ export default function UsersPage() {
                     </TableCell>
                     <TableCell><Typography variant="body2" color="text.secondary">{user.email}</Typography></TableCell>
                     <TableCell>
-                      {user.designation ? (
-                        <Chip label={user.designation} size="small"
-                          sx={{
-                            borderRadius: 1.5, fontWeight: 500,
-                            bgcolor: user.color_hex ? `${user.color_hex}18` : 'action.hover',
-                            color: user.color_hex || 'text.secondary',
-                            border: user.color_hex ? `1px solid ${user.color_hex}30` : 'none',
-                          }}
-                        />
-                      ) : '—'}
+                      <Chip label={user.designation} size="small"
+                        sx={{
+                          borderRadius: 1.5, fontWeight: 500,
+                          bgcolor: 'action.hover',
+                          color: 'text.secondary',
+                        }}
+                      />
                     </TableCell>
                     <TableCell>
                       <FormControl size="small" sx={{ minWidth: 130 }}>
