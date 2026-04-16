@@ -38,6 +38,7 @@ export default function DevPlansPage() {
   const [planDetails, setPlanDetails] = useState({});
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
   const [filterIndividual, setFilterIndividual] = useState('');
+  const [filterTeam, setFilterTeam] = useState('');
 
   const user = authService.getUser();
   const role = user?.role;
@@ -180,9 +181,13 @@ export default function DevPlansPage() {
 
   const showSnack = (message, severity = 'success') => setSnack({ open: true, message, severity });
 
-  const filteredPlans = filterIndividual
-    ? plans.filter(p => p.individual_id === filterIndividual)
-    : plans;
+  const filteredPlans = plans.filter(p => {
+    const matchesInd = !filterIndividual || p.individual_id === filterIndividual;
+    // Check if the individual belongs to the selected team
+    const individual = individuals.find(i => i.id === p.individual_id);
+    const matchesTeam = !filterTeam || (individual && individual.team_id === filterTeam);
+    return matchesInd && matchesTeam;
+  });
 
   const getIndName = (id) => {
     const ind = individuals.find(i => i.id === id);
@@ -244,10 +249,22 @@ export default function DevPlansPage() {
 
       {/* Filter */}
       {role !== 'employee' && (
-        <Box sx={{ mb: 3 }}>
+        <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <Autocomplete
             size="small"
-            options={individuals}
+            options={teams}
+            getOptionLabel={(option) => option.name}
+            value={teams.find(t => t.id === filterTeam) || null}
+            onChange={(e, newValue) => {
+              setFilterTeam(newValue ? newValue.id : '');
+              setFilterIndividual(''); // Reset individual filter when team changes
+            }}
+            renderInput={(params) => <TextField {...params} label="Filter by Team" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+            sx={{ minWidth: 250 }}
+          />
+          <Autocomplete
+            size="small"
+            options={individuals.filter(i => !filterTeam || i.team_id === filterTeam)}
             getOptionLabel={(option) => `${option.first_name} ${option.last_name}`}
             value={individuals.find(i => i.id === filterIndividual) || null}
             onChange={(e, newValue) => setFilterIndividual(newValue ? newValue.id : '')}

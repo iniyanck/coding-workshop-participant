@@ -32,6 +32,7 @@ function CatalogTab() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [selectedSkill, setSelectedSkill] = useState(null);
 
   useEffect(() => { loadCatalog(); }, []);
 
@@ -134,7 +135,12 @@ function CatalogTab() {
                     </TableRow>
                   ) : (
                     filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((item) => (
-                      <TableRow key={item.id} hover sx={{ transition: 'background 0.2s' }}>
+                      <TableRow 
+                        key={item.id} 
+                        hover 
+                        onClick={() => setSelectedSkill(item)}
+                        sx={{ transition: 'background 0.2s', cursor: 'pointer' }}
+                      >
                         <TableCell>
                           <Typography variant="subtitle2" fontWeight={600}>{item.name}</Typography>
                         </TableCell>
@@ -169,7 +175,7 @@ function CatalogTab() {
                         {authService.canDelete() && (
                           <TableCell align="right">
                             <Tooltip title="Delete">
-                              <IconButton size="small" onClick={() => setDeleteTarget(item.id)} sx={{ color: 'error.main' }}>
+                              <IconButton size="small" onClick={(e) => { e.stopPropagation(); setDeleteTarget(item.id); }} sx={{ color: 'error.main' }}>
                                 <DeleteIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
@@ -219,6 +225,34 @@ function CatalogTab() {
             {saving ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Create'}
           </Button>
         </DialogActions>
+      </Dialog>
+      
+      {/* Skill Detail Popup */}
+      <Dialog open={!!selectedSkill} onClose={() => setSelectedSkill(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        {selectedSkill && (
+          <>
+            <DialogTitle sx={{ fontWeight: 700 }}>Skill Details</DialogTitle>
+            <DialogContent dividers>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Skill Name</Typography>
+                  <Typography variant="body1" fontWeight={600}>{selectedSkill.name}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Category</Typography>
+                  <Typography variant="body2">{selectedSkill.category}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Description</Typography>
+                  <Typography variant="body2">{selectedSkill.description || 'No description provided.'}</Typography>
+                </Box>
+              </Box>
+            </DialogContent>
+            <DialogActions sx={{ p: 2 }}>
+              <Button onClick={() => setSelectedSkill(null)} variant="contained" sx={{ borderRadius: 2 }}>Close</Button>
+            </DialogActions>
+          </>
+        )}
       </Dialog>
 
       <ConfirmDialog open={!!deleteTarget} title="Delete Skill"

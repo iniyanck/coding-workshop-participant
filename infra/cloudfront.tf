@@ -59,6 +59,25 @@ resource "aws_cloudfront_distribution" "this" {
   #   prefix          = "cdn_website_logs/"
   # }
 
+  # NEW: Aggressive caching for static Catalog routes at the Edge
+  dynamic "ordered_cache_behavior" {
+    for_each = local.function_origins
+    content {
+      path_pattern     = "/api/${ordered_cache_behavior.value.name}/catalog*"
+      target_origin_id = ordered_cache_behavior.value.origin_id
+
+      allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+      cached_methods         = ["GET", "HEAD"]
+      viewer_protocol_policy = "redirect-to-https"
+
+      # Use AWS Managed CachingOptimized Policy (ID: 658327ea-f89d-4fab-a63d-7e88639e58f6)
+      cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6"
+      
+      # Use AllViewerExceptHostHeader for origin requests (ID: b689b0a8-53d0-40ab-baf2-68738e2966ac)
+      origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
+    }
+  }
+
   dynamic "ordered_cache_behavior" {
     for_each = local.function_origins
     content {

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import Map, { Marker, Popup, NavigationControl, useMap } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { Typography, Box, Paper, useTheme } from '@mui/material';
+import { Typography, Box, Paper, useTheme, Button } from '@mui/material';
 import PersonPinCircleIcon from '@mui/icons-material/PersonPinCircle';
 import StarIcon from '@mui/icons-material/Star';
 
@@ -11,10 +11,17 @@ const TeamMap = ({ individuals, teamInfo }) => {
   const mapRef = useRef(null);
 
   const getMarkerStyle = (person) => {
-    const isLeader = person.id === teamInfo?.leader_id || person.id === teamInfo?.org_leader_id;
-    if (isLeader) return { color: theme.palette.error.main, icon: <StarIcon fontSize="large" sx={{ color: 'error.main' }}/>, label: 'Leader' };
-    if (!person.is_direct_staff) return { color: theme.palette.warning.main, icon: <PersonPinCircleIcon fontSize="large" sx={{ color: 'warning.main' }}/>, label: 'Indirect Staff' };
-    return { color: theme.palette.primary.main, icon: <PersonPinCircleIcon fontSize="large" sx={{ color: 'primary.main' }}/>, label: 'Direct Staff' };
+    // Rank 4 (Top): Org Leader (Secondary color)
+    if (person.id === teamInfo?.org_leader_id) return { color: theme.palette.secondary.main, icon: <StarIcon fontSize="large" sx={{ color: 'secondary.main' }}/>, label: 'Org Leader', rank: 4 };
+    
+    // Rank 3: Team Leader (Error/Red color)
+    if (person.id === teamInfo?.leader_id) return { color: theme.palette.error.main, icon: <StarIcon fontSize="large" sx={{ color: 'error.main' }}/>, label: 'Team Leader', rank: 3 };
+    
+    // Rank 2: Indirect Staff (Warning/Orange color)
+    if (!person.is_direct_staff) return { color: theme.palette.warning.main, icon: <PersonPinCircleIcon fontSize="large" sx={{ color: 'warning.main' }}/>, label: 'Indirect Staff', rank: 2 };
+    
+    // Rank 1: Direct Staff (Primary/Blue color)
+    return { color: theme.palette.primary.main, icon: <PersonPinCircleIcon fontSize="large" sx={{ color: 'primary.main' }}/>, label: 'Direct Staff', rank: 1 };
   };
 
   const mappableIndividuals = useMemo(() => {
@@ -91,6 +98,13 @@ const TeamMap = ({ individuals, teamInfo }) => {
     ? "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json"
     : "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
 
+  // Sort individuals so that higher-ranked people (leaders) render last, ensuring they appear on top.
+  const sortedGriddedIndividuals = useMemo(() => {
+    return [...griddedIndividuals].sort((a, b) => {
+      return getMarkerStyle(a).rank - getMarkerStyle(b).rank;
+    });
+  }, [griddedIndividuals, teamInfo]);
+
   return (
     <Box sx={{ 
       height: 450, 
@@ -134,7 +148,29 @@ const TeamMap = ({ individuals, teamInfo }) => {
       >
         <NavigationControl position="top-right" />
 
-        {griddedIndividuals.map(person => (
+        {/* Reset View Button Overlay */}
+        <Box sx={{ position: 'absolute', top: 12, left: 12, zIndex: 2 }}>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={() => mapRef.current?.flyTo({ 
+              center: [viewState.longitude, viewState.latitude], 
+              zoom: viewState.zoom, 
+              duration: 800 
+            })}
+            sx={{
+              bgcolor: 'background.paper',
+              color: 'text.primary',
+              boxShadow: 2,
+              fontWeight: 600,
+              '&:hover': { bgcolor: 'action.hover' }
+            }}
+          >
+            Reset View
+          </Button>
+        </Box>
+
+        {sortedGriddedIndividuals.map(person => (
           <Marker 
             key={person.id} 
             longitude={person.location_lng} 
@@ -147,6 +183,7 @@ const TeamMap = ({ individuals, teamInfo }) => {
           >
             {/* Add double click handler here */}
             <div 
+              title={person.designation || 'No Designation'}
               style={{ cursor: 'pointer', transform: 'translate(0, 5px)', transition: 'transform 0.2s' }}
               onDoubleClick={(e) => {
                 e.stopPropagation();
@@ -173,6 +210,9 @@ const TeamMap = ({ individuals, teamInfo }) => {
               </Typography>
               <Typography variant="caption" display="block" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>
                 {getMarkerStyle(selectedPerson).label}
+              </Typography>
+              <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5, fontWeight: 500 }}>
+                {selectedPerson.designation || 'No Designation'}
               </Typography>
               <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
                 {selectedPerson.location}

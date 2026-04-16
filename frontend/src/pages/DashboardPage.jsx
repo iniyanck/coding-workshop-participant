@@ -5,6 +5,10 @@ import {
   ListItem, ListItemAvatar, ListItemText, Divider, Paper, LinearProgress,
   Rating, useTheme,
 } from '@mui/material';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
+  Legend, ResponsiveContainer, PieChart, Pie, Cell 
+} from 'recharts';
 import {
   People as PeopleIcon, Groups as GroupsIcon, EmojiEvents as TrophyIcon,
   TrendingUp as TrendingIcon, LocationOn as LocationIcon,
@@ -98,6 +102,28 @@ function EmployeeDashboard({ user, navigate, loading, myIndividual, mySkills, my
           <StatCard title="Skill Gaps" value={gapView.filter(g => g.gap > 0).length} loading={loading}
             icon={<GapIcon />} gradient="linear-gradient(135deg, #ef4444 0%, #f97316 100%)"
             subtitle="vs team requirements" />
+        </Grid>
+      </Grid>
+      
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid size={{ xs: 12 }}>
+          <Paper sx={{ borderRadius: 3, p: 3 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>Peer Comparison: My Skills vs Team Average</Typography>
+            <Box sx={{ width: '100%', height: 320 }}>
+              <ResponsiveContainer>
+                <BarChart data={gapView} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="skill_name" tick={{ fontSize: 12 }} />
+                  <YAxis domain={[0, 5]} ticks={[1, 2, 3, 4, 5]} />
+                  <RechartsTooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Legend iconType="circle" />
+                  <Bar dataKey="myProficiency" name="My Level" fill={theme.palette.primary.main} radius={[4, 4, 0, 0]} barSize={24} />
+                  <Bar dataKey="avg_proficiency" name="Team Avg" fill={theme.palette.text.secondary} radius={[4, 4, 0, 0]} barSize={24} opacity={0.6} />
+                  <Bar dataKey="required_proficiency" name="Required" fill={theme.palette.warning.main} radius={[4, 4, 0, 0]} barSize={24} opacity={0.6} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
+          </Paper>
         </Grid>
       </Grid>
 
@@ -366,6 +392,13 @@ function ManagerDashboard({ user, navigate, loading, teams, individuals, awards,
   const avgProgress = totalPlanItems > 0 ? Math.round((completedPlanItems / totalPlanItems) * 100) : 0;
   const criticalGaps = teamSkillGaps.filter(g => g.gap >= 2);
 
+  // Chart data for Dev Plans
+  const planData = [
+    { name: 'Completed', value: teamPlans.filter(p => p.status === 'completed').length, color: theme.palette.success.main },
+    { name: 'In Progress', value: teamPlans.filter(p => p.status === 'in_progress').length, color: theme.palette.primary.main },
+    { name: 'Draft', value: teamPlans.filter(p => p.status === 'draft').length, color: theme.palette.text.disabled },
+  ].filter(d => d.value > 0);
+
   return (
     <>
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -433,46 +466,84 @@ function ManagerDashboard({ user, navigate, loading, teams, individuals, awards,
           </Paper>
         </Grid>
 
-        {/* Team Development Plan Status */}
+        {/* Team Development Plan Visualization */}
         <Grid size={{ xs: 12, md: 6 }}>
           <Paper sx={{ borderRadius: 3, p: 3, height: '100%' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <PlanIcon sx={{ color: 'secondary.main' }} /> Dev Plan Status Distribution
+            </Typography>
+            {teamPlans.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+                No active plans to visualize.
+              </Typography>
+            ) : (
+              <Box sx={{ width: '100%', height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <ResponsiveContainer>
+                  <PieChart>
+                    <Pie
+                      data={planData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={100}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {planData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip />
+                    <Legend verticalAlign="bottom" height={36}/>
+                  </PieChart>
+                </ResponsiveContainer>
+              </Box>
+            )}
+          </Paper>
+        </Grid>
+
+        {/* Team Development Plan List */}
+        <Grid size={{ xs: 12 }}>
+          <Paper sx={{ borderRadius: 3, p: 3 }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <TrainingIcon sx={{ color: 'secondary.main' }} /> Team Development Plans
+              <TrainingIcon sx={{ color: 'secondary.main' }} /> Recent Team Development Plans
             </Typography>
             {teamPlans.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
                 No development plans yet for your team(s).
               </Typography>
             ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              <Grid container spacing={2}>
                 {teamPlans.slice(0, 6).map(plan => (
-                  <Box key={plan.id} sx={{ 
-                    p: 2, borderRadius: 2, 
-                    bgcolor: 'action.hover', 
-                    border: '1px solid',
-                    borderColor: 'divider', 
-                    cursor: 'pointer', 
-                    '&:hover': { bgcolor: 'action.selected' } 
-                  }}
-                    onClick={() => navigate('/dev-plans')}
-                  >
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Box>
-                        <Typography variant="subtitle2" fontWeight={600}>{plan.title}</Typography>
-                        <Typography variant="caption" color="text.secondary">{plan.individual_name}</Typography>
+                  <Grid key={plan.id} size={{ xs: 12, sm: 6, md: 4 }}>
+                    <Box sx={{ 
+                      p: 2, borderRadius: 2, 
+                      bgcolor: 'action.hover', 
+                      border: '1px solid',
+                      borderColor: 'divider', 
+                      cursor: 'pointer', 
+                      '&:hover': { bgcolor: 'action.selected' } 
+                    }}
+                      onClick={() => navigate('/dev-plans')}
+                    >
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Box>
+                          <Typography variant="subtitle2" fontWeight={600}>{plan.title}</Typography>
+                          <Typography variant="caption" color="text.secondary">{plan.individual_name}</Typography>
+                        </Box>
+                        <Chip label={plan.status?.replace('_', ' ')} size="small"
+                          sx={{ 
+                            height: 20, fontSize: '0.6rem', fontWeight: 600, textTransform: 'capitalize',
+                            bgcolor: plan.status === 'completed' ? `${theme.palette.success.main}15` : plan.status === 'in_progress' ? `${theme.palette.primary.main}15` : 'action.disabledBackground',
+                            color: plan.status === 'completed' ? 'success.main' : plan.status === 'in_progress' ? 'primary.main' : 'text.disabled',
+                          }} />
                       </Box>
-                      <Chip label={plan.status?.replace('_', ' ')} size="small"
-                        sx={{ 
-                          height: 20, fontSize: '0.6rem', fontWeight: 600, textTransform: 'capitalize',
-                          bgcolor: plan.status === 'completed' ? `${theme.palette.success.main}15` : plan.status === 'in_progress' ? `${theme.palette.primary.main}15` : 'action.disabledBackground',
-                          color: plan.status === 'completed' ? 'success.main' : plan.status === 'in_progress' ? 'primary.main' : 'text.disabled',
-                        }} />
+                      <LinearProgress variant="determinate" value={plan.progress || 0}
+                        sx={{ height: 4, borderRadius: 2, bgcolor: 'divider', '& .MuiLinearProgress-bar': { borderRadius: 2, bgcolor: 'secondary.main' } }} />
                     </Box>
-                    <LinearProgress variant="determinate" value={plan.progress || 0}
-                      sx={{ height: 4, borderRadius: 2, bgcolor: 'divider', '& .MuiLinearProgress-bar': { borderRadius: 2, bgcolor: 'secondary.main' } }} />
-                  </Box>
+                  </Grid>
                 ))}
-              </Box>
+              </Grid>
             )}
           </Paper>
         </Grid>

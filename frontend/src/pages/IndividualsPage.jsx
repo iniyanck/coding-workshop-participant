@@ -4,7 +4,7 @@ import {
   TableHead, TableRow, Paper, Chip, CircularProgress,
   FormControl, InputLabel, Select, MenuItem,
   InputAdornment, TablePagination, Alert,
-  TextField, Rating, Snackbar, IconButton, Tooltip, useTheme,
+  TextField, Rating, Snackbar, IconButton, Tooltip, useTheme, Autocomplete,
 } from '@mui/material';
 import {
   Search as SearchIcon, People as PeopleIcon,
@@ -40,6 +40,7 @@ export default function IndividualsPage() {
   const [catalog, setCatalog] = useState([]);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [addSkillForm, setAddSkillForm] = useState({ skill_id: '', proficiency: 3 });
+  const [selectedIndividual, setSelectedIndividual] = useState(null);
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
 
   const userRole = authService.getUser()?.role;
@@ -169,15 +170,20 @@ export default function IndividualsPage() {
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: 'text.disabled' }} /></InputAdornment> }}
             sx={{ minWidth: 280, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
           />
-          <FormControl size="small" sx={{ minWidth: 160 }}>
-            <InputLabel>Filter by Team</InputLabel>
-            <Select value={filterTeam} label="Filter by Team" onChange={(e) => { setFilterTeam(e.target.value); setPage(0); }}
-              sx={{ borderRadius: 2 }}
-            >
-              <MenuItem value="">All Teams</MenuItem>
-              {teams.map(t => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            size="small"
+            options={teams}
+            getOptionLabel={(option) => option.name}
+            value={teams.find(t => t.id === filterTeam) || null}
+            onChange={(e, newValue) => { 
+              setFilterTeam(newValue ? newValue.id : ''); 
+              setPage(0); 
+            }}
+            renderInput={(params) => (
+              <TextField {...params} label="Filter by Team" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+            )}
+            sx={{ minWidth: 250 }}
+          />
         </Box>
 
         {loading ? (
@@ -206,7 +212,12 @@ export default function IndividualsPage() {
                     </TableRow>
                   ) : (
                     filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((ind) => (
-                      <TableRow key={ind.id} hover sx={{ transition: 'background 0.2s' }}>
+                      <TableRow 
+                        key={ind.id} 
+                        hover 
+                        onClick={() => setSelectedIndividual(ind)}
+                        sx={{ transition: 'background 0.2s', cursor: 'pointer' }}
+                      >
                         <TableCell>
                           <Chip label={ind.employee_id || '—'} size="small"
                             sx={{ borderRadius: 1.5, fontWeight: 600, fontFamily: 'monospace', bgcolor: `${theme.palette.secondary.main}20`, color: 'secondary.main' }}
@@ -243,14 +254,14 @@ export default function IndividualsPage() {
                             <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
                               <Tooltip title="Assess Skills">
                                 <MuiButton size="small" variant="outlined" startIcon={<SkillsIcon />}
-                                  onClick={() => openSkillsDialog(ind)}
+                                  onClick={(e) => { e.stopPropagation(); openSkillsDialog(ind); }}
                                   sx={{ borderRadius: 2, fontSize: '0.7rem', minWidth: 'auto' }}
                                 >
                                   Skills
                                 </MuiButton>
                               </Tooltip>
                               <MuiButton size="small" variant="outlined" startIcon={<EditIcon />} 
-                                onClick={() => { setEditInd({...ind}); setEditOpen(true); }}
+                                onClick={(e) => { e.stopPropagation(); setEditInd({...ind}); setEditOpen(true); }}
                                 sx={{ borderRadius: 2, fontSize: '0.7rem', minWidth: 'auto' }}
                               >
                                 Team
@@ -368,6 +379,43 @@ export default function IndividualsPage() {
         <DialogActions sx={{ px: 3, py: 2 }}>
           <MuiButton onClick={() => setSkillsOpen(false)} sx={{ borderRadius: 2 }}>Close</MuiButton>
         </DialogActions>
+      </Dialog>
+      
+      {/* Detail Popup */}
+      <Dialog open={!!selectedIndividual} onClose={() => setSelectedIndividual(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        {selectedIndividual && (
+          <>
+            <DialogTitle sx={{ fontWeight: 700 }}>Employee Details</DialogTitle>
+            <DialogContent dividers>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Full Name</Typography>
+                  <Typography variant="body1" fontWeight={600}>{selectedIndividual.first_name} {selectedIndividual.last_name}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Employee ID / Email</Typography>
+                  <Typography variant="body2">{selectedIndividual.employee_id} | {selectedIndividual.email || 'N/A'}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Designation & Team</Typography>
+                  <Typography variant="body2">{selectedIndividual.designation || 'N/A'} • {selectedIndividual.team_name || 'No Team'}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Location</Typography>
+                  <Typography variant="body2">{selectedIndividual.location || 'Not Set'}</Typography>
+                  {(selectedIndividual.location_lat && selectedIndividual.location_lng) && (
+                    <Typography variant="caption" color="primary.main" sx={{ display: 'block', mt: 0.5 }}>
+                      Coordinates: {selectedIndividual.location_lat}, {selectedIndividual.location_lng}
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            </DialogContent>
+            <DialogActions sx={{ p: 2 }}>
+              <MuiButton onClick={() => setSelectedIndividual(null)} variant="contained" sx={{ borderRadius: 2 }}>Close</MuiButton>
+            </DialogActions>
+          </>
+        )}
       </Dialog>
 
       <Snackbar open={snack.open} autoHideDuration={4000} onClose={() => setSnack({ ...snack, open: false })}

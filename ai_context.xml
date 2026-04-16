@@ -1720,7 +1720,7 @@ def handle_create_catalog(body):
 def handle_get_catalog():
     """Handle GET /api/achievements-service/catalog"""
     items = get_all_catalog_items(PG_CONFIG)
-    return response(200, items)
+    return response(200, items, cache_max_age=3600)
 
 def handle_delete_catalog(resource_id):
     """Handle DELETE /api/achievements-service/catalog/{id}"""
@@ -1762,16 +1762,24 @@ def extract_id(path):
         return parts[-1] if len(parts) > 2 else None
     return None
 
-def response(status_code, body):
-    """Build a Lambda response object."""
+def response(status_code, body, cache_max_age=0):
+    """Build a Lambda response object with optional caching."""
+    headers = {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    }
+    
+    # Inject Edge/Browser Caching headers
+    if cache_max_age > 0:
+        headers["Cache-Control"] = f"public, max-age={cache_max_age}"
+    else:
+        headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+
     resp = {
         "statusCode": status_code,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        },
+        "headers": headers,
     }
     if body is not None:
         resp["body"] = json.dumps(body, default=str)
@@ -2946,7 +2954,7 @@ def handle_create_catalog(body):
 
 def handle_get_catalog():
     items = get_all_catalog_items(PG_CONFIG)
-    return response(200, items)
+    return response(200, items, cache_max_age=3600)
 
 def handle_delete_catalog(resource_id):
     deleted = delete_catalog_item(PG_CONFIG, resource_id)
@@ -3007,16 +3015,24 @@ def handle_gap_analysis(params):
 
 # --- Utilities ---
 
-def response(status_code, body):
-    """Build a Lambda response object."""
+def response(status_code, body, cache_max_age=0):
+    """Build a Lambda response object with optional caching."""
+    headers = {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    }
+    
+    # Inject Edge/Browser Caching headers
+    if cache_max_age > 0:
+        headers["Cache-Control"] = f"public, max-age={cache_max_age}"
+    else:
+        headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+
     resp = {
         "statusCode": status_code,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        },
+        "headers": headers,
     }
     if body is not None:
         resp["body"] = json.dumps(body, default=str)
@@ -3231,7 +3247,7 @@ def get_team_gap_analysis(config, team_id):
                    sc.id as skill_id, sc.name, sc.category,
                    trs.required_proficiency,
                    COALESCE(AVG(isk.proficiency), 0) as avg_proficiency,
-                   COUNT(isk.id) as members_with_skill,
+                   COUNT(CASE WHEN isk.proficiency >= trs.required_proficiency THEN 1 END) as members_with_skill,
                    mc.total as total_members
                FROM team_required_skills trs
                JOIN skills_catalog sc ON trs.skill_id = sc.id
@@ -4198,12 +4214,12 @@ def row_to_dict_item(row):
     "@mui/icons-material": "^9.0.0",
     "@mui/material": "^9.0.0",
     "axios": "^1.15.0",
-
     "maplibre-gl": "^5.23.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-map-gl": "^8.1.1",
-    "react-router-dom": "^7.14.1"
+    "react-router-dom": "^7.14.1",
+    "recharts": "^2.15.4"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",
@@ -4586,7 +4602,7 @@ import {
   TableHead, TableRow, Paper, Chip, CircularProgress,
   FormControl, InputLabel, Select, MenuItem,
   InputAdornment, TablePagination, Alert,
-  TextField, Rating, Snackbar, IconButton, Tooltip, useTheme,
+  TextField, Rating, Snackbar, IconButton, Tooltip, useTheme, Autocomplete,
 } from '@mui/material';
 import {
   Search as SearchIcon, People as PeopleIcon,
@@ -4622,6 +4638,7 @@ export default function IndividualsPage() {
   const [catalog, setCatalog] = useState([]);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [addSkillForm, setAddSkillForm] = useState({ skill_id: '', proficiency: 3 });
+  const [selectedIndividual, setSelectedIndividual] = useState(null);
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
 
   const userRole = authService.getUser()?.role;
@@ -4749,15 +4766,20 @@ export default function IndividualsPage() {
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: 'text.disabled' }} /></InputAdornment> }}
             sx={{ minWidth: 280, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
           />
-          <FormControl size="small" sx={{ minWidth: 160 }}>
-            <InputLabel>Filter by Team</InputLabel>
-            <Select value={filterTeam} label="Filter by Team" onChange={(e) => { setFilterTeam(e.target.value); setPage(0); }}
-              sx={{ borderRadius: 2 }}
-            >
-              <MenuItem value="">All Teams</MenuItem>
-              {teams.map(t => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            size="small"
+            options={teams}
+            getOptionLabel={(option) => option.name}
+            value={teams.find(t => t.id === filterTeam) || null}
+            onChange={(e, newValue) => { 
+              setFilterTeam(newValue ? newValue.id : ''); 
+              setPage(0); 
+            }}
+            renderInput={(params) => (
+              <TextField {...params} label="Filter by Team" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+            )}
+            sx={{ minWidth: 250 }}
+          />
         </Box>
 
         {loading ? (
@@ -4786,7 +4808,12 @@ export default function IndividualsPage() {
                     </TableRow>
                   ) : (
                     filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((ind) => (
-                      <TableRow key={ind.id} hover sx={{ transition: 'background 0.2s' }}>
+                      <TableRow 
+                        key={ind.id} 
+                        hover 
+                        onClick={() => setSelectedIndividual(ind)}
+                        sx={{ transition: 'background 0.2s', cursor: 'pointer' }}
+                      >
                         <TableCell>
                           <Chip label={ind.employee_id || '—'} size="small"
                             sx={{ borderRadius: 1.5, fontWeight: 600, fontFamily: 'monospace', bgcolor: `${theme.palette.secondary.main}20`, color: 'secondary.main' }}
@@ -4823,14 +4850,14 @@ export default function IndividualsPage() {
                             <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
                               <Tooltip title="Assess Skills">
                                 <MuiButton size="small" variant="outlined" startIcon={<SkillsIcon />}
-                                  onClick={() => openSkillsDialog(ind)}
+                                  onClick={(e) => { e.stopPropagation(); openSkillsDialog(ind); }}
                                   sx={{ borderRadius: 2, fontSize: '0.7rem', minWidth: 'auto' }}
                                 >
                                   Skills
                                 </MuiButton>
                               </Tooltip>
                               <MuiButton size="small" variant="outlined" startIcon={<EditIcon />} 
-                                onClick={() => { setEditInd({...ind}); setEditOpen(true); }}
+                                onClick={(e) => { e.stopPropagation(); setEditInd({...ind}); setEditOpen(true); }}
                                 sx={{ borderRadius: 2, fontSize: '0.7rem', minWidth: 'auto' }}
                               >
                                 Team
@@ -4949,6 +4976,43 @@ export default function IndividualsPage() {
           <MuiButton onClick={() => setSkillsOpen(false)} sx={{ borderRadius: 2 }}>Close</MuiButton>
         </DialogActions>
       </Dialog>
+      
+      {/* Detail Popup */}
+      <Dialog open={!!selectedIndividual} onClose={() => setSelectedIndividual(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        {selectedIndividual && (
+          <>
+            <DialogTitle sx={{ fontWeight: 700 }}>Employee Details</DialogTitle>
+            <DialogContent dividers>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Full Name</Typography>
+                  <Typography variant="body1" fontWeight={600}>{selectedIndividual.first_name} {selectedIndividual.last_name}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Employee ID / Email</Typography>
+                  <Typography variant="body2">{selectedIndividual.employee_id} | {selectedIndividual.email || 'N/A'}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Designation & Team</Typography>
+                  <Typography variant="body2">{selectedIndividual.designation || 'N/A'} • {selectedIndividual.team_name || 'No Team'}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Location</Typography>
+                  <Typography variant="body2">{selectedIndividual.location || 'Not Set'}</Typography>
+                  {(selectedIndividual.location_lat && selectedIndividual.location_lng) && (
+                    <Typography variant="caption" color="primary.main" sx={{ display: 'block', mt: 0.5 }}>
+                      Coordinates: {selectedIndividual.location_lat}, {selectedIndividual.location_lng}
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            </DialogContent>
+            <DialogActions sx={{ p: 2 }}>
+              <MuiButton onClick={() => setSelectedIndividual(null)} variant="contained" sx={{ borderRadius: 2 }}>Close</MuiButton>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
 
       <Snackbar open={snack.open} autoHideDuration={4000} onClose={() => setSnack({ ...snack, open: false })}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
@@ -4994,6 +5058,7 @@ function CatalogTab() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [selectedCatalog, setSelectedCatalog] = useState(null);
 
   useEffect(() => { loadCatalog(); }, []);
 
@@ -5097,7 +5162,12 @@ function CatalogTab() {
                     </TableRow>
                   ) : (
                     filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((item) => (
-                      <TableRow key={item.id} hover sx={{ transition: 'background 0.2s' }}>
+                      <TableRow 
+                        key={item.id} 
+                        hover 
+                        onClick={() => setSelectedCatalog(item)}
+                        sx={{ transition: 'background 0.2s', cursor: 'pointer' }}
+                      >
                         <TableCell>
                           <Typography variant="subtitle2" fontWeight={600}>{item.title}</Typography>
                         </TableCell>
@@ -5133,7 +5203,7 @@ function CatalogTab() {
                         {authService.canDelete() && (
                           <TableCell align="right">
                             <Tooltip title="Delete">
-                              <IconButton size="small" onClick={() => setDeleteTarget(item.id)} sx={{ color: 'error.main' }}>
+                              <IconButton size="small" onClick={(e) => { e.stopPropagation(); setDeleteTarget(item.id); }} sx={{ color: 'error.main' }}>
                                 <DeleteIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
@@ -5203,6 +5273,40 @@ function CatalogTab() {
           </Button>
         </DialogActions>
       </Dialog>
+      
+      {/* Detail Popup */}
+      <Dialog open={!!selectedCatalog} onClose={() => setSelectedCatalog(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        {selectedCatalog && (
+          <>
+            <DialogTitle sx={{ fontWeight: 700 }}>Achievement Definition</DialogTitle>
+            <DialogContent dividers>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Title</Typography>
+                  <Typography variant="body1" fontWeight={600}>{selectedCatalog.title}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Description</Typography>
+                  <Typography variant="body2">{selectedCatalog.description || 'No description provided.'}</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', gap: 4 }}>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Recurrence</Typography>
+                    <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>{selectedCatalog.recurrence || 'None'}</Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Scope</Typography>
+                    <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>{selectedCatalog.scope || 'None'}</Typography>
+                  </Box>
+                </Box>
+              </Box>
+            </DialogContent>
+            <DialogActions sx={{ p: 2 }}>
+              <Button onClick={() => setSelectedCatalog(null)} variant="contained" sx={{ borderRadius: 2 }}>Close</Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
 
       <ConfirmDialog open={!!deleteTarget} title="Delete Catalog Item"
         message="Deleting this definition will also remove all awards linked to it. Continue?"
@@ -5235,6 +5339,7 @@ function AwardsTab() {
   const [filterTeam, setFilterTeam] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [selectedAward, setSelectedAward] = useState(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -5337,15 +5442,18 @@ function AwardsTab() {
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: 'text.disabled' }} /></InputAdornment> }}
             sx={{ minWidth: 280, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
           />
-          <FormControl size="small" sx={{ minWidth: 160 }}>
-            <InputLabel>Filter by Team</InputLabel>
-            <Select value={filterTeam} label="Filter by Team" onChange={(e) => { setFilterTeam(e.target.value); setPage(0); }}
-              sx={{ borderRadius: 2 }}
-            >
-              <MenuItem value="">All Teams</MenuItem>
-              {teams.map(t => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            size="small"
+            options={teams}
+            getOptionLabel={(option) => option.name}
+            value={teams.find(t => t.id === filterTeam) || null}
+            onChange={(e, newValue) => { 
+              setFilterTeam(newValue ? newValue.id : ''); 
+              setPage(0); 
+            }}
+            renderInput={(params) => <TextField {...params} label="Filter by Team" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+            sx={{ minWidth: 250 }}
+          />
         </Box>
 
         {loading ? (
@@ -5374,7 +5482,12 @@ function AwardsTab() {
                     </TableRow>
                   ) : (
                     filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((award) => (
-                      <TableRow key={award.id} hover sx={{ transition: 'background 0.2s' }}>
+                      <TableRow 
+                        key={award.id} 
+                        hover 
+                        onClick={() => setSelectedAward(award)}
+                        sx={{ transition: 'background 0.2s', cursor: 'pointer' }}
+                      >
                         <TableCell>
                           <Typography variant="subtitle2" fontWeight={600}>{award.title}</Typography>
                           {award.description && (
@@ -5403,7 +5516,7 @@ function AwardsTab() {
                         {authService.canDelete() && (
                           <TableCell align="right">
                             <Tooltip title="Revoke">
-                              <IconButton size="small" onClick={() => setDeleteTarget(award.id)} sx={{ color: 'error.main' }}>
+                              <IconButton size="small" onClick={(e) => { e.stopPropagation(); setDeleteTarget(award.id); }} sx={{ color: 'error.main' }}>
                                 <DeleteIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
@@ -5496,6 +5609,48 @@ function AwardsTab() {
           </Button>
         </DialogActions>
       </Dialog>
+      
+      {/* Award Detail Popup */}
+      <Dialog open={!!selectedAward} onClose={() => setSelectedAward(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        {selectedAward && (
+          <>
+            <DialogTitle sx={{ fontWeight: 700 }}>Award Details</DialogTitle>
+            <DialogContent dividers>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Achievement</Typography>
+                  <Typography variant="body1" fontWeight={600}>{selectedAward.title}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Description</Typography>
+                  <Typography variant="body2">{selectedAward.description || 'No description provided.'}</Typography>
+                </Box>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Recipient Type</Typography>
+                    <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>{selectedAward.team_id ? 'Team Award' : 'Individual Award'}</Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Recipient Name</Typography>
+                    <Typography variant="body2">{selectedAward.team_name || selectedAward.individual_name || '—'}</Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Awarded Date</Typography>
+                    <Typography variant="body2">{selectedAward.awarded_date}</Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Location</Typography>
+                    <Typography variant="body2">{selectedAward.location || '—'}</Typography>
+                  </Box>
+                </Box>
+              </Box>
+            </DialogContent>
+            <DialogActions sx={{ p: 2 }}>
+              <Button onClick={() => setSelectedAward(null)} variant="contained" sx={{ borderRadius: 2 }}>Close</Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
 
       <ConfirmDialog open={!!deleteTarget} title="Revoke Award"
         message="Are you sure you want to revoke this award?"
@@ -5554,6 +5709,10 @@ import {
   ListItem, ListItemAvatar, ListItemText, Divider, Paper, LinearProgress,
   Rating, useTheme,
 } from '@mui/material';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
+  Legend, ResponsiveContainer, PieChart, Pie, Cell 
+} from 'recharts';
 import {
   People as PeopleIcon, Groups as GroupsIcon, EmojiEvents as TrophyIcon,
   TrendingUp as TrendingIcon, LocationOn as LocationIcon,
@@ -5647,6 +5806,28 @@ function EmployeeDashboard({ user, navigate, loading, myIndividual, mySkills, my
           <StatCard title="Skill Gaps" value={gapView.filter(g => g.gap > 0).length} loading={loading}
             icon={<GapIcon />} gradient="linear-gradient(135deg, #ef4444 0%, #f97316 100%)"
             subtitle="vs team requirements" />
+        </Grid>
+      </Grid>
+      
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid size={{ xs: 12 }}>
+          <Paper sx={{ borderRadius: 3, p: 3 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>Peer Comparison: My Skills vs Team Average</Typography>
+            <Box sx={{ width: '100%', height: 320 }}>
+              <ResponsiveContainer>
+                <BarChart data={gapView} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="skill_name" tick={{ fontSize: 12 }} />
+                  <YAxis domain={[0, 5]} ticks={[1, 2, 3, 4, 5]} />
+                  <RechartsTooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Legend iconType="circle" />
+                  <Bar dataKey="myProficiency" name="My Level" fill={theme.palette.primary.main} radius={[4, 4, 0, 0]} barSize={24} />
+                  <Bar dataKey="avg_proficiency" name="Team Avg" fill={theme.palette.text.secondary} radius={[4, 4, 0, 0]} barSize={24} opacity={0.6} />
+                  <Bar dataKey="required_proficiency" name="Required" fill={theme.palette.warning.main} radius={[4, 4, 0, 0]} barSize={24} opacity={0.6} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
+          </Paper>
         </Grid>
       </Grid>
 
@@ -5915,6 +6096,13 @@ function ManagerDashboard({ user, navigate, loading, teams, individuals, awards,
   const avgProgress = totalPlanItems > 0 ? Math.round((completedPlanItems / totalPlanItems) * 100) : 0;
   const criticalGaps = teamSkillGaps.filter(g => g.gap >= 2);
 
+  // Chart data for Dev Plans
+  const planData = [
+    { name: 'Completed', value: teamPlans.filter(p => p.status === 'completed').length, color: theme.palette.success.main },
+    { name: 'In Progress', value: teamPlans.filter(p => p.status === 'in_progress').length, color: theme.palette.primary.main },
+    { name: 'Draft', value: teamPlans.filter(p => p.status === 'draft').length, color: theme.palette.text.disabled },
+  ].filter(d => d.value > 0);
+
   return (
     <>
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -5982,46 +6170,84 @@ function ManagerDashboard({ user, navigate, loading, teams, individuals, awards,
           </Paper>
         </Grid>
 
-        {/* Team Development Plan Status */}
+        {/* Team Development Plan Visualization */}
         <Grid size={{ xs: 12, md: 6 }}>
           <Paper sx={{ borderRadius: 3, p: 3, height: '100%' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <PlanIcon sx={{ color: 'secondary.main' }} /> Dev Plan Status Distribution
+            </Typography>
+            {teamPlans.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+                No active plans to visualize.
+              </Typography>
+            ) : (
+              <Box sx={{ width: '100%', height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <ResponsiveContainer>
+                  <PieChart>
+                    <Pie
+                      data={planData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={100}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {planData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip />
+                    <Legend verticalAlign="bottom" height={36}/>
+                  </PieChart>
+                </ResponsiveContainer>
+              </Box>
+            )}
+          </Paper>
+        </Grid>
+
+        {/* Team Development Plan List */}
+        <Grid size={{ xs: 12 }}>
+          <Paper sx={{ borderRadius: 3, p: 3 }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <TrainingIcon sx={{ color: 'secondary.main' }} /> Team Development Plans
+              <TrainingIcon sx={{ color: 'secondary.main' }} /> Recent Team Development Plans
             </Typography>
             {teamPlans.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
                 No development plans yet for your team(s).
               </Typography>
             ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              <Grid container spacing={2}>
                 {teamPlans.slice(0, 6).map(plan => (
-                  <Box key={plan.id} sx={{ 
-                    p: 2, borderRadius: 2, 
-                    bgcolor: 'action.hover', 
-                    border: '1px solid',
-                    borderColor: 'divider', 
-                    cursor: 'pointer', 
-                    '&:hover': { bgcolor: 'action.selected' } 
-                  }}
-                    onClick={() => navigate('/dev-plans')}
-                  >
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Box>
-                        <Typography variant="subtitle2" fontWeight={600}>{plan.title}</Typography>
-                        <Typography variant="caption" color="text.secondary">{plan.individual_name}</Typography>
+                  <Grid key={plan.id} size={{ xs: 12, sm: 6, md: 4 }}>
+                    <Box sx={{ 
+                      p: 2, borderRadius: 2, 
+                      bgcolor: 'action.hover', 
+                      border: '1px solid',
+                      borderColor: 'divider', 
+                      cursor: 'pointer', 
+                      '&:hover': { bgcolor: 'action.selected' } 
+                    }}
+                      onClick={() => navigate('/dev-plans')}
+                    >
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Box>
+                          <Typography variant="subtitle2" fontWeight={600}>{plan.title}</Typography>
+                          <Typography variant="caption" color="text.secondary">{plan.individual_name}</Typography>
+                        </Box>
+                        <Chip label={plan.status?.replace('_', ' ')} size="small"
+                          sx={{ 
+                            height: 20, fontSize: '0.6rem', fontWeight: 600, textTransform: 'capitalize',
+                            bgcolor: plan.status === 'completed' ? `${theme.palette.success.main}15` : plan.status === 'in_progress' ? `${theme.palette.primary.main}15` : 'action.disabledBackground',
+                            color: plan.status === 'completed' ? 'success.main' : plan.status === 'in_progress' ? 'primary.main' : 'text.disabled',
+                          }} />
                       </Box>
-                      <Chip label={plan.status?.replace('_', ' ')} size="small"
-                        sx={{ 
-                          height: 20, fontSize: '0.6rem', fontWeight: 600, textTransform: 'capitalize',
-                          bgcolor: plan.status === 'completed' ? `${theme.palette.success.main}15` : plan.status === 'in_progress' ? `${theme.palette.primary.main}15` : 'action.disabledBackground',
-                          color: plan.status === 'completed' ? 'success.main' : plan.status === 'in_progress' ? 'primary.main' : 'text.disabled',
-                        }} />
+                      <LinearProgress variant="determinate" value={plan.progress || 0}
+                        sx={{ height: 4, borderRadius: 2, bgcolor: 'divider', '& .MuiLinearProgress-bar': { borderRadius: 2, bgcolor: 'secondary.main' } }} />
                     </Box>
-                    <LinearProgress variant="determinate" value={plan.progress || 0}
-                      sx={{ height: 4, borderRadius: 2, bgcolor: 'divider', '& .MuiLinearProgress-bar': { borderRadius: 2, bgcolor: 'secondary.main' } }} />
-                  </Box>
+                  </Grid>
                 ))}
-              </Box>
+              </Grid>
             )}
           </Paper>
         </Grid>
@@ -6429,32 +6655,40 @@ export default function TeamsPage() {
         )}
       </Paper>
 
-      {selectedTeam && (
-        <Paper sx={{ mt: 4, p: 3, borderRadius: 3, animation: 'fadeIn 0.5s ease-out' }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <MapIcon sx={{ color: 'primary.main' }} /> Team Distribution: {selectedTeam.name}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Visualizing {individuals.filter(i => i.team_id === selectedTeam.id).length} team members
-              </Typography>
-            </Box>
-            <Button size="small" onClick={() => setSelectedTeam(null)} sx={{ textTransform: 'none' }}>Close Map</Button>
-          </Box>
-          <TeamMap 
-            individuals={individuals.filter(i => i.team_id === selectedTeam.id)} 
-            teamInfo={selectedTeam} 
-          />
-        </Paper>
-      )}
-
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
+      {/* Replace the Paper block starting with {selectedTeam && ( */}
+      <Dialog 
+        open={!!selectedTeam} 
+        onClose={() => setSelectedTeam(null)} 
+        maxWidth="lg" 
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3, height: '80vh' } }}
+      >
+        {selectedTeam && (
+          <>
+            <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 1 }}>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <MapIcon sx={{ color: 'primary.main' }} /> Team Distribution: {selectedTeam.name}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Visualizing {individuals.filter(i => i.team_id === selectedTeam.id).length} team members
+                </Typography>
+              </Box>
+            </DialogTitle>
+            <DialogContent dividers sx={{ p: 0 }}>
+              <TeamMap 
+                individuals={individuals.filter(i => i.team_id === selectedTeam.id)} 
+                teamInfo={selectedTeam} 
+              />
+            </DialogContent>
+            <DialogActions sx={{ px: 3, py: 2 }}>
+              <Button onClick={() => setSelectedTeam(null)} variant="contained" sx={{ borderRadius: 2 }}>
+                Close Map
+              </Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
         <DialogTitle sx={{ fontWeight: 700 }}>{editingId ? 'Edit Team' : 'Add Team'}</DialogTitle>
@@ -6500,21 +6734,40 @@ export default function TeamsPage() {
               renderInput={(params) => <TextField {...params} label="Org Leader" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
             />
           </Box>
-          <FormControl fullWidth sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
-            <InputLabel>Parent Unit</InputLabel>
-            <Select value={form.parent_team_id} label="Parent Unit"
-              onChange={(e) => setForm({ ...form, parent_team_id: e.target.value })}
-            >
-              <MenuItem value="">None (Top Level)</MenuItem>
-              {teams.filter(t => t.id !== editingId).map(t => <MenuItem key={t.id} value={t.id}>{t.name} ({t.unit_type || 'Team'})</MenuItem>)}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            options={teams.filter(t => t.id !== editingId)}
+            getOptionLabel={(option) => `${option.name} (${option.unit_type || 'Team'})`}
+            value={teams.find(t => t.id === form.parent_team_id) || null}
+            onChange={(e, newValue) => setForm({ ...form, parent_team_id: newValue ? newValue.id : '' })}
+            renderInput={(params) => <TextField {...params} label="Parent Unit" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+            sx={{ mb: 2 }}
+          />
           <Autocomplete
             multiple
             options={individuals}
             getOptionLabel={(option) => `${option.first_name} ${option.last_name}`}
             value={individuals.filter(i => form.members.includes(i.id))}
-            onChange={(e, newValue) => setForm({ ...form, members: newValue.map(v => v.id) })}
+            onChange={(e, newValue) => {
+              const newMembers = newValue.map(v => v.id);
+              
+              // Calculate majority location
+              const locs = newValue.map(v => v.location).filter(Boolean);
+              let majorityLoc = '';
+              if (locs.length > 0) {
+                const counts = locs.reduce((acc, loc) => { 
+                  acc[loc] = (acc[loc] || 0) + 1; 
+                  return acc; 
+                }, {});
+                majorityLoc = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
+              }
+
+              // Update form state: auto-fill location if it's currently empty
+              setForm(prev => ({ 
+                ...prev, 
+                members: newMembers,
+                location: prev.location.trim() === '' ? majorityLoc : prev.location
+              }));
+            }}
             renderInput={(params) => <TextField {...params} label="Team Members" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
           />
         </DialogContent>
@@ -6550,7 +6803,7 @@ import {
   Box, Button, Typography, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, Snackbar, Alert, Chip, CircularProgress,
-  Tooltip, Checkbox, FormControlLabel, useTheme,
+  Tooltip, Checkbox, FormControlLabel, useTheme, TablePagination,
 } from '@mui/material';
 import {
   Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon,
@@ -6583,7 +6836,8 @@ export default function HRISConsolePage() {
   const loadData = async () => {
     try {
       const data = await individualsService.getAll();
-      setHrisData(data);
+      // Ensure we always set an array to prevent .slice() crashes
+      setHrisData(Array.isArray(data) ? data : []);
     } catch (err) {
       showSnack('Failed to load HRIS data', 'error');
     } finally {
@@ -6718,47 +6972,52 @@ export default function HRISConsolePage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                hrisData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((record, index) => (
-                  <TableRow key={`${record.employee_id}-${index}`} hover sx={{ transition: 'background 0.2s' }}>
-                    <TableCell>
-                      <Chip label={record.employee_id} size="small"
-                        sx={{ borderRadius: 1.5, fontWeight: 600, fontFamily: 'monospace', bgcolor: `${theme.palette.success.main}20`, color: 'success.main' }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="subtitle2" fontWeight={600}>
-                        {record.first_name} {record.last_name}
-                      </Typography>
-                    </TableCell>
-                    <TableCell><Typography variant="body2" color="text.secondary">{record.email}</Typography></TableCell>
-                    <TableCell>
-                      <Typography variant="body2" color="text.secondary">
-                        {record.designation || 'Pending'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip size="small" label={record.is_direct_staff ? 'Direct' : 'Non-Direct'}
-                        sx={{
-                          borderRadius: 1.5, fontWeight: 500, fontSize: '0.7rem',
-                          bgcolor: record.is_direct_staff ? `${theme.palette.primary.main}15` : `${theme.palette.warning.main}15`,
-                          color: record.is_direct_staff ? 'primary.main' : 'warning.main',
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      <Tooltip title="Edit">
-                        <IconButton size="small" onClick={() => handleOpen(index)} sx={{ color: 'primary.main', mr: 0.5 }}>
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Delete Record">
-                        <IconButton size="small" onClick={() => handleDelete(index)} sx={{ color: 'error.main' }}>
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
-                ))
+                hrisData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((record, index) => {
+                  if (!record) return null; // Safe guard against null records
+                  const actualIndex = page * rowsPerPage + index; // Use true index
+                  
+                  return (
+                    <TableRow key={`${record.employee_id}-${actualIndex}`} hover sx={{ transition: 'background 0.2s' }}>
+                      <TableCell>
+                        <Chip label={record.employee_id} size="small"
+                          sx={{ borderRadius: 1.5, fontWeight: 600, fontFamily: 'monospace', bgcolor: `${theme.palette.success.main}20`, color: 'success.main' }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="subtitle2" fontWeight={600}>
+                          {record.first_name} {record.last_name}
+                        </Typography>
+                      </TableCell>
+                      <TableCell><Typography variant="body2" color="text.secondary">{record.email}</Typography></TableCell>
+                      <TableCell>
+                        <Typography variant="body2" color="text.secondary">
+                          {record.designation || 'Pending'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip size="small" label={record.is_direct_staff ? 'Direct' : 'Non-Direct'}
+                          sx={{
+                            borderRadius: 1.5, fontWeight: 500, fontSize: '0.7rem',
+                            bgcolor: record.is_direct_staff ? `${theme.palette.primary.main}15` : `${theme.palette.warning.main}15`,
+                            color: record.is_direct_staff ? 'primary.main' : 'warning.main',
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <Tooltip title="Edit">
+                          <IconButton size="small" onClick={() => handleOpen(actualIndex)} sx={{ color: 'primary.main', mr: 0.5 }}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete Record">
+                          <IconButton size="small" onClick={() => handleDelete(actualIndex)} sx={{ color: 'error.main' }}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -7072,6 +7331,7 @@ function CatalogTab() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [selectedSkill, setSelectedSkill] = useState(null);
 
   useEffect(() => { loadCatalog(); }, []);
 
@@ -7174,7 +7434,12 @@ function CatalogTab() {
                     </TableRow>
                   ) : (
                     filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((item) => (
-                      <TableRow key={item.id} hover sx={{ transition: 'background 0.2s' }}>
+                      <TableRow 
+                        key={item.id} 
+                        hover 
+                        onClick={() => setSelectedSkill(item)}
+                        sx={{ transition: 'background 0.2s', cursor: 'pointer' }}
+                      >
                         <TableCell>
                           <Typography variant="subtitle2" fontWeight={600}>{item.name}</Typography>
                         </TableCell>
@@ -7209,7 +7474,7 @@ function CatalogTab() {
                         {authService.canDelete() && (
                           <TableCell align="right">
                             <Tooltip title="Delete">
-                              <IconButton size="small" onClick={() => setDeleteTarget(item.id)} sx={{ color: 'error.main' }}>
+                              <IconButton size="small" onClick={(e) => { e.stopPropagation(); setDeleteTarget(item.id); }} sx={{ color: 'error.main' }}>
                                 <DeleteIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
@@ -7259,6 +7524,34 @@ function CatalogTab() {
             {saving ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Create'}
           </Button>
         </DialogActions>
+      </Dialog>
+      
+      {/* Skill Detail Popup */}
+      <Dialog open={!!selectedSkill} onClose={() => setSelectedSkill(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        {selectedSkill && (
+          <>
+            <DialogTitle sx={{ fontWeight: 700 }}>Skill Details</DialogTitle>
+            <DialogContent dividers>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Skill Name</Typography>
+                  <Typography variant="body1" fontWeight={600}>{selectedSkill.name}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Category</Typography>
+                  <Typography variant="body2">{selectedSkill.category}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Description</Typography>
+                  <Typography variant="body2">{selectedSkill.description || 'No description provided.'}</Typography>
+                </Box>
+              </Box>
+            </DialogContent>
+            <DialogActions sx={{ p: 2 }}>
+              <Button onClick={() => setSelectedSkill(null)} variant="contained" sx={{ borderRadius: 2 }}>Close</Button>
+            </DialogActions>
+          </>
+        )}
       </Dialog>
 
       <ConfirmDialog open={!!deleteTarget} title="Delete Skill"
@@ -7614,6 +7907,7 @@ export default function DevPlansPage() {
   const [planDetails, setPlanDetails] = useState({});
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
   const [filterIndividual, setFilterIndividual] = useState('');
+  const [filterTeam, setFilterTeam] = useState('');
 
   const user = authService.getUser();
   const role = user?.role;
@@ -7756,9 +8050,13 @@ export default function DevPlansPage() {
 
   const showSnack = (message, severity = 'success') => setSnack({ open: true, message, severity });
 
-  const filteredPlans = filterIndividual
-    ? plans.filter(p => p.individual_id === filterIndividual)
-    : plans;
+  const filteredPlans = plans.filter(p => {
+    const matchesInd = !filterIndividual || p.individual_id === filterIndividual;
+    // Check if the individual belongs to the selected team
+    const individual = individuals.find(i => i.id === p.individual_id);
+    const matchesTeam = !filterTeam || (individual && individual.team_id === filterTeam);
+    return matchesInd && matchesTeam;
+  });
 
   const getIndName = (id) => {
     const ind = individuals.find(i => i.id === id);
@@ -7820,10 +8118,22 @@ export default function DevPlansPage() {
 
       {/* Filter */}
       {role !== 'employee' && (
-        <Box sx={{ mb: 3 }}>
+        <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <Autocomplete
             size="small"
-            options={individuals}
+            options={teams}
+            getOptionLabel={(option) => option.name}
+            value={teams.find(t => t.id === filterTeam) || null}
+            onChange={(e, newValue) => {
+              setFilterTeam(newValue ? newValue.id : '');
+              setFilterIndividual(''); // Reset individual filter when team changes
+            }}
+            renderInput={(params) => <TextField {...params} label="Filter by Team" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+            sx={{ minWidth: 250 }}
+          />
+          <Autocomplete
+            size="small"
+            options={individuals.filter(i => !filterTeam || i.team_id === filterTeam)}
             getOptionLabel={(option) => `${option.first_name} ${option.last_name}`}
             value={individuals.find(i => i.id === filterIndividual) || null}
             onChange={(e, newValue) => setFilterIndividual(newValue ? newValue.id : '')}
@@ -8189,17 +8499,39 @@ const ENDPOINT = '/api/skills-service';
 export const skillsService = {
   // --- Catalog ---
   async getCatalog() {
+    const cacheKey = 'skills_catalog_cache';
+    const cacheTimeKey = 'skills_catalog_time';
+    const CACHE_TTL = 3600000; // 1 Hour in milliseconds
+    
+    const cachedData = localStorage.getItem(cacheKey);
+    const cachedTime = localStorage.getItem(cacheTimeKey);
+
+    // Return cached data if it exists and hasn't expired
+    if (cachedData && cachedTime && (Date.now() - parseInt(cachedTime) < CACHE_TTL)) {
+      return JSON.parse(cachedData);
+    }
+
+    // Otherwise, fetch fresh data and cache it
     const response = await api.get(`${ENDPOINT}/catalog`);
+    localStorage.setItem(cacheKey, JSON.stringify(response.data));
+    localStorage.setItem(cacheTimeKey, Date.now().toString());
+    
     return response.data;
   },
 
   async createCatalogItem(data) {
     const response = await api.post(`${ENDPOINT}/catalog`, data);
+    // Invalidate cache on mutation
+    localStorage.removeItem('skills_catalog_cache');
+    localStorage.removeItem('skills_catalog_time');
     return response.data;
   },
 
   async deleteCatalogItem(id) {
     await api.delete(`${ENDPOINT}/catalog/${id}`);
+    // Invalidate cache on mutation
+    localStorage.removeItem('skills_catalog_cache');
+    localStorage.removeItem('skills_catalog_time');
   },
 
   // --- Team Required Skills ---
@@ -8404,17 +8736,39 @@ const ENDPOINT = '/api/achievements-service';
 export const achievementsService = {
   // --- Catalog (achievement definitions) ---
   async getCatalog() {
+    const cacheKey = 'achievements_catalog_cache';
+    const cacheTimeKey = 'achievements_catalog_time';
+    const CACHE_TTL = 3600000; // 1 Hour in milliseconds
+    
+    const cachedData = localStorage.getItem(cacheKey);
+    const cachedTime = localStorage.getItem(cacheTimeKey);
+
+    // Return cached data if it exists and hasn't expired
+    if (cachedData && cachedTime && (Date.now() - parseInt(cachedTime) < CACHE_TTL)) {
+      return JSON.parse(cachedData);
+    }
+
+    // Otherwise, fetch fresh data and cache it
     const response = await api.get(`${ENDPOINT}/catalog`);
+    localStorage.setItem(cacheKey, JSON.stringify(response.data));
+    localStorage.setItem(cacheTimeKey, Date.now().toString());
+    
     return response.data;
   },
 
   async createCatalogItem(data) {
     const response = await api.post(`${ENDPOINT}/catalog`, data);
+    // Invalidate cache on mutation
+    localStorage.removeItem('achievements_catalog_cache');
+    localStorage.removeItem('achievements_catalog_time');
     return response.data;
   },
 
   async deleteCatalogItem(id) {
     await api.delete(`${ENDPOINT}/catalog/${id}`);
+    // Invalidate cache on mutation
+    localStorage.removeItem('achievements_catalog_cache');
+    localStorage.removeItem('achievements_catalog_time');
   },
 
   // --- Awards (granted achievements) ---
@@ -8781,42 +9135,68 @@ export default function Layout() {
 
     </file>
     <file path="frontend/src/components/TeamMap.jsx">
-import React, { useState, useMemo } from 'react';
-import Map, { Marker, Popup, NavigationControl } from 'react-map-gl/maplibre';
+import React, { useState, useMemo, useRef } from 'react';
+import Map, { Marker, Popup, NavigationControl, useMap } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { Typography, Box, Paper, useTheme } from '@mui/material';
+import { Typography, Box, Paper, useTheme, Button } from '@mui/material';
 import PersonPinCircleIcon from '@mui/icons-material/PersonPinCircle';
 import StarIcon from '@mui/icons-material/Star';
 
 const TeamMap = ({ individuals, teamInfo }) => {
   const theme = useTheme();
   const [selectedPerson, setSelectedPerson] = useState(null);
+  const mapRef = useRef(null);
 
   const getMarkerStyle = (person) => {
-    const isLeader = person.id === teamInfo?.leader_id || person.id === teamInfo?.org_leader_id;
-    if (isLeader) return { color: theme.palette.error.main, icon: <StarIcon fontSize="large" sx={{ color: 'error.main' }}/>, label: 'Leader' };
-    if (!person.is_direct_staff) return { color: theme.palette.warning.main, icon: <PersonPinCircleIcon fontSize="large" sx={{ color: 'warning.main' }}/>, label: 'Indirect Staff' };
-    return { color: theme.palette.primary.main, icon: <PersonPinCircleIcon fontSize="large" sx={{ color: 'primary.main' }}/>, label: 'Direct Staff' };
+    // Rank 4 (Top): Org Leader (Secondary color)
+    if (person.id === teamInfo?.org_leader_id) return { color: theme.palette.secondary.main, icon: <StarIcon fontSize="large" sx={{ color: 'secondary.main' }}/>, label: 'Org Leader', rank: 4 };
+    
+    // Rank 3: Team Leader (Error/Red color)
+    if (person.id === teamInfo?.leader_id) return { color: theme.palette.error.main, icon: <StarIcon fontSize="large" sx={{ color: 'error.main' }}/>, label: 'Team Leader', rank: 3 };
+    
+    // Rank 2: Indirect Staff (Warning/Orange color)
+    if (!person.is_direct_staff) return { color: theme.palette.warning.main, icon: <PersonPinCircleIcon fontSize="large" sx={{ color: 'warning.main' }}/>, label: 'Indirect Staff', rank: 2 };
+    
+    // Rank 1: Direct Staff (Primary/Blue color)
+    return { color: theme.palette.primary.main, icon: <PersonPinCircleIcon fontSize="large" sx={{ color: 'primary.main' }}/>, label: 'Direct Staff', rank: 1 };
   };
 
   const mappableIndividuals = useMemo(() => {
     return individuals.filter(p => p.location_lat != null && p.location_lng != null);
   }, [individuals]);
 
-  // Apply a tiny random positional offset to spread out markers that land on the exact same city
-  const jitteredIndividuals = useMemo(() => {
-    const seen = {};
-    return mappableIndividuals.map(p => {
-        const key = `${p.location_lat},${p.location_lng}`;
-        if (seen[key]) {
-            const offsetLat = (Math.random() - 0.5) * 0.05;
-            const offsetLng = (Math.random() - 0.5) * 0.05;
-            seen[key] += 1;
-            return { ...p, location_lat: p.location_lat + offsetLat, location_lng: p.location_lng + offsetLng };
-        }
-        seen[key] = 1;
-        return p;
+  const griddedIndividuals = useMemo(() => {
+    const grouped = {};
+    
+    // Group people by exact coordinates
+    mappableIndividuals.forEach(p => {
+      const key = `${p.location_lat},${p.location_lng}`;
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(p);
     });
+
+    const result = [];
+    const offsetStep = 0.00015; // Roughly 15 meters separation
+
+    Object.values(grouped).forEach(group => {
+      const cols = Math.ceil(Math.sqrt(group.length));
+      group.forEach((p, idx) => {
+        const row = Math.floor(idx / cols);
+        const col = idx % cols;
+        
+        // Center the grid over the original coordinate
+        const rowOffset = (row - (cols - 1) / 2) * offsetStep;
+        const colOffset = (col - (cols - 1) / 2) * offsetStep;
+        
+        result.push({ 
+          ...p, 
+          location_lat: p.location_lat + rowOffset, 
+          location_lng: p.location_lng + colOffset 
+        });
+      });
+    });
+    
+    return result;
   }, [mappableIndividuals]);
 
   const viewState = useMemo(() => {
@@ -8855,6 +9235,13 @@ const TeamMap = ({ individuals, teamInfo }) => {
     ? "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json"
     : "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
 
+  // Sort individuals so that higher-ranked people (leaders) render last, ensuring they appear on top.
+  const sortedGriddedIndividuals = useMemo(() => {
+    return [...griddedIndividuals].sort((a, b) => {
+      return getMarkerStyle(a).rank - getMarkerStyle(b).rank;
+    });
+  }, [griddedIndividuals, teamInfo]);
+
   return (
     <Box sx={{ 
       height: 450, 
@@ -8866,13 +9253,61 @@ const TeamMap = ({ individuals, teamInfo }) => {
       borderColor: 'divider',
       boxShadow: theme.palette.mode === 'light' ? '0 10px 30px rgba(0,0,0,0.1)' : '0 10px 30px rgba(0,0,0,0.4)' 
     }}>
+      {/* Global override for MapLibre popups */}
+      <style>{`
+        .maplibregl-popup-content {
+          background-color: ${theme.palette.background.paper};
+          color: ${theme.palette.text.primary};
+          border-radius: 8px;
+          box-shadow: ${theme.palette.mode === 'dark' ? '0 4px 20px rgba(0,0,0,0.5)' : '0 4px 14px rgba(0,0,0,0.1)'};
+          padding: 16px 24px 16px 16px;
+        }
+        .maplibregl-popup-close-button {
+          color: ${theme.palette.text.secondary};
+          font-size: 16px;
+          right: 6px;
+          top: 6px;
+          border-radius: 4px;
+        }
+        .maplibregl-popup-close-button:hover {
+          background-color: ${theme.palette.action.hover};
+        }
+        .maplibregl-popup-tip {
+          border-top-color: ${theme.palette.background.paper} !important;
+          border-bottom-color: ${theme.palette.background.paper} !important;
+        }
+      `}</style>
+
       <Map
+        ref={mapRef}
         initialViewState={viewState}
         mapStyle={mapStyle}
       >
         <NavigationControl position="top-right" />
 
-        {jitteredIndividuals.map(person => (
+        {/* Reset View Button Overlay */}
+        <Box sx={{ position: 'absolute', top: 12, left: 12, zIndex: 2 }}>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={() => mapRef.current?.flyTo({ 
+              center: [viewState.longitude, viewState.latitude], 
+              zoom: viewState.zoom, 
+              duration: 800 
+            })}
+            sx={{
+              bgcolor: 'background.paper',
+              color: 'text.primary',
+              boxShadow: 2,
+              fontWeight: 600,
+              '&:hover': { bgcolor: 'action.hover' }
+            }}
+          >
+            Reset View
+          </Button>
+        </Box>
+
+        {sortedGriddedIndividuals.map(person => (
           <Marker 
             key={person.id} 
             longitude={person.location_lng} 
@@ -8883,7 +9318,15 @@ const TeamMap = ({ individuals, teamInfo }) => {
               setSelectedPerson(person);
             }}
           >
-            <div style={{ cursor: 'pointer', transform: 'translate(0, 5px)', transition: 'transform 0.2s' }}>
+            {/* Add double click handler here */}
+            <div 
+              title={person.designation || 'No Designation'}
+              style={{ cursor: 'pointer', transform: 'translate(0, 5px)', transition: 'transform 0.2s' }}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                mapRef.current?.flyTo({ center: [person.location_lng, person.location_lat], zoom: 18, duration: 800 });
+              }}
+            >
               {getMarkerStyle(person).icon}
             </div>
           </Marker>
@@ -8904,6 +9347,9 @@ const TeamMap = ({ individuals, teamInfo }) => {
               </Typography>
               <Typography variant="caption" display="block" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>
                 {getMarkerStyle(selectedPerson).label}
+              </Typography>
+              <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5, fontWeight: 500 }}>
+                {selectedPerson.designation || 'No Designation'}
               </Typography>
               <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
                 {selectedPerson.location}
@@ -9092,6 +9538,25 @@ resource "aws_cloudfront_distribution" "this" {
   #   bucket          = var.aws_bucket
   #   prefix          = "cdn_website_logs/"
   # }
+
+  # NEW: Aggressive caching for static Catalog routes at the Edge
+  dynamic "ordered_cache_behavior" {
+    for_each = local.function_origins
+    content {
+      path_pattern     = "/api/${ordered_cache_behavior.value.name}/catalog*"
+      target_origin_id = ordered_cache_behavior.value.origin_id
+
+      allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+      cached_methods         = ["GET", "HEAD"]
+      viewer_protocol_policy = "redirect-to-https"
+
+      # Use AWS Managed CachingOptimized Policy (ID: 658327ea-f89d-4fab-a63d-7e88639e58f6)
+      cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6"
+      
+      # Use AllViewerExceptHostHeader for origin requests (ID: b689b0a8-53d0-40ab-baf2-68738e2966ac)
+      origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
+    }
+  }
 
   dynamic "ordered_cache_behavior" {
     for_each = local.function_origins

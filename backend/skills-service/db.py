@@ -215,7 +215,7 @@ def get_team_gap_analysis(config, team_id):
                    sc.id as skill_id, sc.name, sc.category,
                    trs.required_proficiency,
                    COALESCE(AVG(isk.proficiency), 0) as avg_proficiency,
-                   COUNT(isk.id) as members_with_skill,
+                   COUNT(CASE WHEN isk.proficiency >= trs.required_proficiency THEN 1 END) as members_with_skill,
                    mc.total as total_members
                FROM team_required_skills trs
                JOIN skills_catalog sc ON trs.skill_id = sc.id

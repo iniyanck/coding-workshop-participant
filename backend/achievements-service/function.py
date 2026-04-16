@@ -94,7 +94,7 @@ def handle_create_catalog(body):
 def handle_get_catalog():
     """Handle GET /api/achievements-service/catalog"""
     items = get_all_catalog_items(PG_CONFIG)
-    return response(200, items)
+    return response(200, items, cache_max_age=3600)
 
 
 def handle_delete_catalog(resource_id):
@@ -142,16 +142,24 @@ def extract_id(path):
     return None
 
 
-def response(status_code, body):
-    """Build a Lambda response object."""
+def response(status_code, body, cache_max_age=0):
+    """Build a Lambda response object with optional caching."""
+    headers = {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    }
+    
+    # Inject Edge/Browser Caching headers
+    if cache_max_age > 0:
+        headers["Cache-Control"] = f"public, max-age={cache_max_age}"
+    else:
+        headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+
     resp = {
         "statusCode": status_code,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        },
+        "headers": headers,
     }
     if body is not None:
         resp["body"] = json.dumps(body, default=str)

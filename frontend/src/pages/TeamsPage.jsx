@@ -368,15 +368,14 @@ export default function TeamsPage() {
               renderInput={(params) => <TextField {...params} label="Org Leader" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
             />
           </Box>
-          <FormControl fullWidth sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}>
-            <InputLabel>Parent Unit</InputLabel>
-            <Select value={form.parent_team_id} label="Parent Unit"
-              onChange={(e) => setForm({ ...form, parent_team_id: e.target.value })}
-            >
-              <MenuItem value="">None (Top Level)</MenuItem>
-              {teams.filter(t => t.id !== editingId).map(t => <MenuItem key={t.id} value={t.id}>{t.name} ({t.unit_type || 'Team'})</MenuItem>)}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            options={teams.filter(t => t.id !== editingId)}
+            getOptionLabel={(option) => `${option.name} (${option.unit_type || 'Team'})`}
+            value={teams.find(t => t.id === form.parent_team_id) || null}
+            onChange={(e, newValue) => setForm({ ...form, parent_team_id: newValue ? newValue.id : '' })}
+            renderInput={(params) => <TextField {...params} label="Parent Unit" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+            sx={{ mb: 2 }}
+          />
           <Autocomplete
             multiple
             options={individuals}

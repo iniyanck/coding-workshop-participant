@@ -32,6 +32,7 @@ function CatalogTab() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [selectedCatalog, setSelectedCatalog] = useState(null);
 
   useEffect(() => { loadCatalog(); }, []);
 
@@ -135,7 +136,12 @@ function CatalogTab() {
                     </TableRow>
                   ) : (
                     filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((item) => (
-                      <TableRow key={item.id} hover sx={{ transition: 'background 0.2s' }}>
+                      <TableRow 
+                        key={item.id} 
+                        hover 
+                        onClick={() => setSelectedCatalog(item)}
+                        sx={{ transition: 'background 0.2s', cursor: 'pointer' }}
+                      >
                         <TableCell>
                           <Typography variant="subtitle2" fontWeight={600}>{item.title}</Typography>
                         </TableCell>
@@ -171,7 +177,7 @@ function CatalogTab() {
                         {authService.canDelete() && (
                           <TableCell align="right">
                             <Tooltip title="Delete">
-                              <IconButton size="small" onClick={() => setDeleteTarget(item.id)} sx={{ color: 'error.main' }}>
+                              <IconButton size="small" onClick={(e) => { e.stopPropagation(); setDeleteTarget(item.id); }} sx={{ color: 'error.main' }}>
                                 <DeleteIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
@@ -241,6 +247,40 @@ function CatalogTab() {
           </Button>
         </DialogActions>
       </Dialog>
+      
+      {/* Detail Popup */}
+      <Dialog open={!!selectedCatalog} onClose={() => setSelectedCatalog(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        {selectedCatalog && (
+          <>
+            <DialogTitle sx={{ fontWeight: 700 }}>Achievement Definition</DialogTitle>
+            <DialogContent dividers>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Title</Typography>
+                  <Typography variant="body1" fontWeight={600}>{selectedCatalog.title}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Description</Typography>
+                  <Typography variant="body2">{selectedCatalog.description || 'No description provided.'}</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', gap: 4 }}>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Recurrence</Typography>
+                    <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>{selectedCatalog.recurrence || 'None'}</Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Scope</Typography>
+                    <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>{selectedCatalog.scope || 'None'}</Typography>
+                  </Box>
+                </Box>
+              </Box>
+            </DialogContent>
+            <DialogActions sx={{ p: 2 }}>
+              <Button onClick={() => setSelectedCatalog(null)} variant="contained" sx={{ borderRadius: 2 }}>Close</Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
 
       <ConfirmDialog open={!!deleteTarget} title="Delete Catalog Item"
         message="Deleting this definition will also remove all awards linked to it. Continue?"
@@ -273,6 +313,7 @@ function AwardsTab() {
   const [filterTeam, setFilterTeam] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [selectedAward, setSelectedAward] = useState(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -377,15 +418,18 @@ function AwardsTab() {
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: 'text.disabled' }} /></InputAdornment> }}
             sx={{ minWidth: 280, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
           />
-          <FormControl size="small" sx={{ minWidth: 160 }}>
-            <InputLabel>Filter by Team</InputLabel>
-            <Select value={filterTeam} label="Filter by Team" onChange={(e) => { setFilterTeam(e.target.value); setPage(0); }}
-              sx={{ borderRadius: 2 }}
-            >
-              <MenuItem value="">All Teams</MenuItem>
-              {teams.map(t => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            size="small"
+            options={teams}
+            getOptionLabel={(option) => option.name}
+            value={teams.find(t => t.id === filterTeam) || null}
+            onChange={(e, newValue) => { 
+              setFilterTeam(newValue ? newValue.id : ''); 
+              setPage(0); 
+            }}
+            renderInput={(params) => <TextField {...params} label="Filter by Team" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+            sx={{ minWidth: 250 }}
+          />
         </Box>
 
         {loading ? (
@@ -414,7 +458,12 @@ function AwardsTab() {
                     </TableRow>
                   ) : (
                     filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((award) => (
-                      <TableRow key={award.id} hover sx={{ transition: 'background 0.2s' }}>
+                      <TableRow 
+                        key={award.id} 
+                        hover 
+                        onClick={() => setSelectedAward(award)}
+                        sx={{ transition: 'background 0.2s', cursor: 'pointer' }}
+                      >
                         <TableCell>
                           <Typography variant="subtitle2" fontWeight={600}>{award.title}</Typography>
                           {award.description && (
@@ -443,7 +492,7 @@ function AwardsTab() {
                         {authService.canDelete() && (
                           <TableCell align="right">
                             <Tooltip title="Revoke">
-                              <IconButton size="small" onClick={() => setDeleteTarget(award.id)} sx={{ color: 'error.main' }}>
+                              <IconButton size="small" onClick={(e) => { e.stopPropagation(); setDeleteTarget(award.id); }} sx={{ color: 'error.main' }}>
                                 <DeleteIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
@@ -535,6 +584,48 @@ function AwardsTab() {
             {saving ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Grant'}
           </Button>
         </DialogActions>
+      </Dialog>
+      
+      {/* Award Detail Popup */}
+      <Dialog open={!!selectedAward} onClose={() => setSelectedAward(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        {selectedAward && (
+          <>
+            <DialogTitle sx={{ fontWeight: 700 }}>Award Details</DialogTitle>
+            <DialogContent dividers>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Achievement</Typography>
+                  <Typography variant="body1" fontWeight={600}>{selectedAward.title}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Description</Typography>
+                  <Typography variant="body2">{selectedAward.description || 'No description provided.'}</Typography>
+                </Box>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Recipient Type</Typography>
+                    <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>{selectedAward.team_id ? 'Team Award' : 'Individual Award'}</Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Recipient Name</Typography>
+                    <Typography variant="body2">{selectedAward.team_name || selectedAward.individual_name || '—'}</Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Awarded Date</Typography>
+                    <Typography variant="body2">{selectedAward.awarded_date}</Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Location</Typography>
+                    <Typography variant="body2">{selectedAward.location || '—'}</Typography>
+                  </Box>
+                </Box>
+              </Box>
+            </DialogContent>
+            <DialogActions sx={{ p: 2 }}>
+              <Button onClick={() => setSelectedAward(null)} variant="contained" sx={{ borderRadius: 2 }}>Close</Button>
+            </DialogActions>
+          </>
+        )}
       </Dialog>
 
       <ConfirmDialog open={!!deleteTarget} title="Revoke Award"
