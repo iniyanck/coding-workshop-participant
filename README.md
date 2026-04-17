@@ -65,7 +65,7 @@ ACME TeamHub is a centralized Human Resource Information System (HRIS) and team 
 ## 📬 Contact & Feedback
 
 For questions, feedback, or suggestions, please reach out to:
-**Iniyan C Kalai** - [iniyanckalai@gmail.com](mailto:iniyanckalai@gmail.com)
+**Iniyan C K** - [iniyanckalai@gmail.com](mailto:iniyanckalai@gmail.com)
 
 ---
 *Developed as part of the ACME Inc. Organizational Transformation.*
