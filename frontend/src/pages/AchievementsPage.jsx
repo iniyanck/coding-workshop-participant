@@ -163,11 +163,11 @@ function CatalogTab() {
                               sx={{
                                 borderRadius: 1.5, fontWeight: 500,
                                 bgcolor: item.scope === 'team' ? `${theme.palette.primary.main}15` : 
-                                         item.scope === 'individual' ? `${theme.palette.secondary.main}15` : 
+                                         item.scope === 'person' ? `${theme.palette.secondary.main}15` : 
                                          item.scope === 'department' ? `${theme.palette.success.main}15` : 
                                          `${theme.palette.warning.main}15`,
                                 color: item.scope === 'team' ? 'primary.main' : 
-                                       item.scope === 'individual' ? 'secondary.main' : 
+                                       item.scope === 'person' ? 'secondary.main' : 
                                        item.scope === 'department' ? 'success.main' : 
                                        'warning.main',
                               }}
@@ -228,7 +228,7 @@ function CatalogTab() {
                 onChange={(e) => setForm({ ...form, scope: e.target.value })}
               >
                 <MenuItem value="">None</MenuItem>
-                <MenuItem value="individual">Individual</MenuItem>
+                <MenuItem value="person">Person</MenuItem>
                 <MenuItem value="team">Team</MenuItem>
                 <MenuItem value="department">Department</MenuItem>
                 <MenuItem value="division">Division</MenuItem>
@@ -457,7 +457,7 @@ function AwardsTab({ viewMode = 'all' }) {
                   setFilterIndividual(newValue ? newValue.id : '');
                   setPage(0);
                 }}
-                renderInput={(params) => <TextField {...params} label="Filter by Individual" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+                renderInput={(params) => <TextField {...params} label="Filter by Person" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
                 sx={{ minWidth: 250 }}
               />
             </>
@@ -556,7 +556,7 @@ function AwardsTab({ viewMode = 'all' }) {
                 setForm({ 
                   ...form, 
                   catalog_id: e.target.value,
-                  team_id: scope === 'individual' ? '' : form.team_id,
+                  team_id: scope === 'person' ? '' : form.team_id,
                   individual_id: ['team', 'department', 'division'].includes(scope) ? '' : form.individual_id
                 });
               }}
@@ -582,7 +582,7 @@ function AwardsTab({ viewMode = 'all' }) {
               value={individuals.find(i => i.id === form.individual_id) || null}
               onChange={(e, newValue) => setForm({ ...form, individual_id: newValue ? newValue.id : '' })}
               disabled={['team', 'department', 'division'].includes(catalog.find(c => c.id === form.catalog_id)?.scope)}
-              renderInput={(params) => <TextField {...params} label="Individual" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+              renderInput={(params) => <TextField {...params} label="Person" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
             />
           </Box>
           {errors.team_id && <Typography variant="caption" color="error" sx={{ ml: 1.5, mt: -1, mb: 1, display: 'block' }}>{errors.team_id}</Typography>}
@@ -636,7 +636,7 @@ function AwardsTab({ viewMode = 'all' }) {
                 <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
                   <Box>
                     <Typography variant="caption" color="text.secondary">Recipient Type</Typography>
-                    <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>{selectedAward.team_id ? 'Team Award' : 'Individual Award'}</Typography>
+                    <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>{selectedAward.team_id ? 'Team Award' : 'Personal Award'}</Typography>
                   </Box>
                   <Box>
                     <Typography variant="caption" color="text.secondary">Recipient Name</Typography>

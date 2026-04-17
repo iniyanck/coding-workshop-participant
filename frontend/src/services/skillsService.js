@@ -75,6 +75,12 @@ export const skillsService = {
     const response = await api.get(`${ENDPOINT}/gap-analysis`, { params: { team_id: teamId } });
     return response.data;
   },
+
+  // --- Risk Analysis ---
+  async getRiskAnalysis(teamId) {
+    const response = await api.get(`${ENDPOINT}/risk-analysis`, { params: { team_id: teamId } });
+    return response.data;
+  },
 };
 
 export default skillsService;

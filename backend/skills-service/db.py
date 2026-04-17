@@ -243,6 +243,69 @@ def get_team_gap_analysis(config, team_id):
         ]
 
 
+# --- Risk Analysis ---
+
+def get_team_risk_analysis(config, team_id):
+    """
+    Calculate engagement and development risk for team members based on 
+    skill coverage, development plan momentum, and recent recognition.
+    """
+    conn = get_connection(config)
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            WITH dev_progress AS (
+                SELECT dp.individual_id,
+                       COUNT(dpi.id) as total_items,
+                       COUNT(CASE WHEN dpi.status = 'completed' THEN 1 END) as completed_items
+                FROM development_plans dp
+                LEFT JOIN development_plan_items dpi ON dp.id = dpi.plan_id
+                GROUP BY dp.individual_id
+            ),
+            recent_awards AS (
+                SELECT individual_id, MAX(awarded_date) as last_award
+                FROM achievement_awards
+                GROUP BY individual_id
+            ),
+            skill_cov AS (
+                SELECT i.id as individual_id,
+                       AVG(CASE
+                           WHEN isk.proficiency IS NULL THEN 0
+                           WHEN trs.required_proficiency IS NULL THEN 100.0
+                           WHEN isk.proficiency >= trs.required_proficiency THEN 100.0
+                           ELSE (isk.proficiency::float / trs.required_proficiency) * 100.0
+                       END) as avg_coverage
+                FROM individuals i
+                LEFT JOIN team_required_skills trs ON i.team_id = trs.team_id
+                LEFT JOIN individual_skills isk ON i.id = isk.individual_id AND trs.skill_id = isk.skill_id
+                WHERE i.team_id = %s AND i.is_active = true
+                GROUP BY i.id
+            )
+            SELECT i.id, i.first_name, i.last_name, i.designation,
+                   COALESCE(sc.avg_coverage, 0) as skill_coverage,
+                   COALESCE(dp.total_items, 0) as dev_total,
+                   COALESCE(dp.completed_items, 0) as dev_completed,
+                   ra.last_award,
+                   CASE
+                       WHEN COALESCE(sc.avg_coverage, 0) < 50 AND ra.last_award IS NULL THEN 'High'
+                       WHEN COALESCE(sc.avg_coverage, 0) < 75 THEN 'Medium'
+                       ELSE 'Low'
+                   END as risk_level
+            FROM individuals i
+            LEFT JOIN skill_cov sc ON i.id = sc.individual_id
+            LEFT JOIN dev_progress dp ON i.id = dp.individual_id
+            LEFT JOIN recent_awards ra ON i.id = ra.individual_id
+            WHERE i.team_id = %s AND i.is_active = true
+            ORDER BY 
+                CASE risk_level WHEN 'High' THEN 1 WHEN 'Medium' THEN 2 ELSE 3 END,
+                skill_coverage ASC
+            """,
+            (team_id, team_id)
+        )
+        rows = cur.fetchall()
+        return [row_to_dict_risk_analysis(row) for row in rows]
+
+
 # --- Helpers ---
 
 def row_to_dict_catalog(row):
@@ -299,3 +362,18 @@ def row_to_dict_individual_skill_joined(row):
     d["skill_name"] = row[7]
     d["category"] = row[8]
     return d
+
+
+def row_to_dict_risk_analysis(row):
+    if not row:
+        return None
+    return {
+        "id": str(row[0]),
+        "name": f"{row[1]} {row[2]}",
+        "designation": row[3],
+        "skill_coverage": round(float(row[4]), 1),
+        "dev_total": int(row[5]),
+        "dev_completed": int(row[6]),
+        "last_award": row[7].isoformat() if row[7] else None,
+        "risk_level": row[8]
+    }

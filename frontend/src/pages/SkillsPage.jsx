@@ -257,7 +257,7 @@ function CatalogTab() {
       </Dialog>
 
       <ConfirmDialog open={!!deleteTarget} title="Delete Skill"
-        message="Deleting this skill will remove all team requirements and individual assessments linked to it. Continue?"
+        message="Deleting this skill will remove all team requirements and personal assessments linked to it. Continue?"
         onConfirm={handleDelete} onCancel={() => setDeleteTarget(null)} />
 
       <Snackbar open={snack.open} autoHideDuration={4000} onClose={() => setSnack({ ...snack, open: false })}

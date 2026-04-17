@@ -18,6 +18,7 @@ from db import (
     get_individual_skills,
     delete_individual_skill,
     get_team_gap_analysis,
+    get_team_risk_analysis,
 )
 
 logger = logging.getLogger()
@@ -88,6 +89,8 @@ def handler(event=None, context=None):
                 return handle_get_individual_skills(query_params)
             elif sub_resource == "gap-analysis":
                 return handle_gap_analysis(query_params)
+            elif sub_resource == "risk-analysis":
+                return handle_risk_analysis(query_params)
             return response(400, {"error": f"Invalid GET path: {path}"})
 
         elif method == "DELETE":
@@ -190,6 +193,14 @@ def handle_gap_analysis(params):
     if not team_id:
         return response(400, {"error": "team_id query parameter is required"})
     analysis = get_team_gap_analysis(PG_CONFIG, team_id)
+    return response(200, analysis)
+
+
+def handle_risk_analysis(params):
+    team_id = params.get("team_id")
+    if not team_id:
+        return response(400, {"error": "team_id query parameter is required"})
+    analysis = get_team_risk_analysis(PG_CONFIG, team_id)
     return response(200, analysis)
 
 

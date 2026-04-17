@@ -15,6 +15,7 @@ import {
   MilitaryTech as AwardIcon, Psychology as SkillsIcon,
   Assignment as PlanIcon, Assessment as GapIcon,
   CheckCircle as DoneIcon, School as TrainingIcon,
+  Warning as WarningIcon,
 } from '@mui/icons-material';
 import teamsService from '../services/teamsService';
 import individualsService from '../services/individualsService';
@@ -58,6 +59,69 @@ const StatCard = ({ title, value, icon, gradient, loading, onClick, subtitle }) 
         </Box>
       </CardContent>
     </Card>
+  );
+};
+
+const RiskAnalysisSection = ({ teamRisk, theme }) => {
+  return (
+    <Grid size={{ xs: 12 }}>
+      <Paper sx={{ borderRadius: 3, p: 3 }}>
+        <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <WarningIcon sx={{ color: 'error.main' }} /> Engagement & Development Risk
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          Identifies team members who may require attention based on low skill coverage, lack of recent recognition, and stagnant development plans.
+        </Typography>
+        
+        {teamRisk.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+            No risk data available.
+          </Typography>
+        ) : (
+          <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' } }}>
+            {teamRisk.map((member) => (
+              <Box key={member.id} sx={{ 
+                p: 2, borderRadius: 2, 
+                bgcolor: member.risk_level === 'High' ? `${theme.palette.error.main}10` : member.risk_level === 'Medium' ? `${theme.palette.warning.main}10` : 'action.hover', 
+                border: '1px solid', 
+                borderColor: member.risk_level === 'High' ? `${theme.palette.error.main}30` : member.risk_level === 'Medium' ? `${theme.palette.warning.main}30` : 'divider'
+              }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                  <Box>
+                    <Typography variant="subtitle2" fontWeight={600}>{member.name}</Typography>
+                    <Typography variant="caption" color="text.secondary">{member.designation}</Typography>
+                  </Box>
+                  <Chip 
+                    label={`${member.risk_level} Risk`} 
+                    size="small"
+                    sx={{ 
+                      fontWeight: 700, borderRadius: 1.5,
+                      bgcolor: member.risk_level === 'High' ? `${theme.palette.error.main}20` : member.risk_level === 'Medium' ? `${theme.palette.warning.main}20` : `${theme.palette.success.main}20`,
+                      color: member.risk_level === 'High' ? 'error.main' : member.risk_level === 'Medium' ? 'warning.main' : 'success.main',
+                    }} 
+                  />
+                </Box>
+                <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="caption" color="text.secondary">Skill Coverage</Typography>
+                    <LinearProgress 
+                      variant="determinate" 
+                      value={member.skill_coverage}
+                      sx={{ height: 6, borderRadius: 3, mt: 0.5, bgcolor: 'divider', '& .MuiLinearProgress-bar': { bgcolor: member.skill_coverage < 50 ? 'error.main' : 'primary.main' } }} 
+                    />
+                    <Typography variant="caption" fontWeight={600}>{member.skill_coverage}%</Typography>
+                  </Box>
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Typography variant="caption" color="text.secondary" display="block">Dev Plan</Typography>
+                    <Typography variant="body2" fontWeight={600}>{member.dev_completed}/{member.dev_total} done</Typography>
+                  </Box>
+                </Box>
+              </Box>
+            ))}
+          </Box>
+        )}
+      </Paper>
+    </Grid>
   );
 };
 
@@ -237,6 +301,24 @@ function EmployeeDashboard({ user, navigate, loading, myIndividual, mySkills, my
 // ---- Admin Dashboard (original global stats) ----
 function AdminDashboard({ user, navigate, loading, teams, individuals, awards }) {
   const theme = useTheme();
+  const [teamRisk, setTeamRisk] = useState([]);
+
+  useEffect(() => {
+    loadRiskData();
+  }, [teams.length]);
+
+  const loadRiskData = async () => {
+    if (teams.length === 0) return;
+    try {
+      // For Admin/HR, provide a cross-section of risk across active teams (limit to 5 for dashboard overview)
+      const risks = await Promise.all(
+        teams.slice(0, 5).map(t => skillsService.getRiskAnalysis(t.id).catch(() => []))
+      );
+      setTeamRisk(risks.flat());
+    } catch (e) {
+      console.error('Failed to load risk analysis', e);
+    }
+  };
   const remoteLeaderTeams = teams.filter(t => {
     if (!t.leader_id) return false;
     const leader = individuals.find(i => i.id === t.leader_id);
@@ -291,9 +373,9 @@ function AdminDashboard({ user, navigate, loading, teams, individuals, awards })
     <>
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-          <StatCard title="Total Individuals" value={individuals.length} loading={loading}
+          <StatCard title="Total People" value={individuals.length} loading={loading}
             icon={<PeopleIcon />} gradient="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-            onClick={() => navigate('/individuals')} />
+            onClick={() => navigate('/people')} />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <StatCard title="Total Teams" value={teams.length} loading={loading}
@@ -375,6 +457,9 @@ function AdminDashboard({ user, navigate, loading, teams, individuals, awards })
             )}
           </Paper>
         </Grid>
+
+        {/* Engagement & Attrition Risk Section */}
+        <RiskAnalysisSection teamRisk={teamRisk} theme={theme} />
       </Grid>
     </>
   );
@@ -385,6 +470,7 @@ function ManagerDashboard({ user, navigate, loading, teams, individuals, awards,
   const theme = useTheme();
   const [teamSkillGaps, setTeamSkillGaps] = useState([]);
   const [teamPlans, setTeamPlans] = useState([]);
+  const [teamRisk, setTeamRisk] = useState([]);
 
   // For manager: teams they lead. For HR: all teams in their location scope
   const myTeams = role === 'manager'
@@ -410,6 +496,12 @@ function ManagerDashboard({ user, navigate, loading, teams, individuals, awards,
         myTeams.slice(0, 5).map(t => devplansService.getPlans({ team_id: t.id }).catch(() => []))
       );
       setTeamPlans(plans.flat());
+
+      // Fetch Risk Analysis
+      const risks = await Promise.all(
+        myTeams.slice(0, 5).map(t => skillsService.getRiskAnalysis(t.id).catch(() => []))
+      );
+      setTeamRisk(risks.flat());
     } catch (e) {
       console.error('Failed to load manager data', e);
     }
@@ -433,7 +525,7 @@ function ManagerDashboard({ user, navigate, loading, teams, individuals, awards,
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <StatCard title={role === 'hr' ? 'Total Employees' : 'Team Members'} value={myMembers.length} loading={loading}
             icon={<PeopleIcon />} gradient="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-            onClick={() => navigate('/individuals')} />
+            onClick={() => navigate('/people')} />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <StatCard title={role === 'hr' ? 'All Teams' : 'My Teams'} value={myTeams.length} loading={loading}
@@ -493,6 +585,9 @@ function ManagerDashboard({ user, navigate, loading, teams, individuals, awards,
             )}
           </Paper>
         </Grid>
+
+        {/* Engagement & Attrition Risk Section */}
+        <RiskAnalysisSection teamRisk={teamRisk} theme={theme} />
 
         {/* Team Development Plan Visualization */}
         <Grid size={{ xs: 12, md: 6 }}>

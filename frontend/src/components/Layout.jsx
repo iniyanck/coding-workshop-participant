@@ -22,7 +22,7 @@ const DRAWER_WIDTH = 260;
 
 const navItems = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
-  { text: 'Individuals', icon: <PeopleIcon />, path: '/individuals' },
+  { text: 'People', icon: <PeopleIcon />, path: '/people' },
   { text: 'Teams', icon: <GroupsIcon />, path: '/teams' },
   { text: 'Skills', icon: <SkillsIcon />, path: '/skills' },
   { text: 'Dev Plans', icon: <PlanIcon />, path: '/dev-plans' },

@@ -72,7 +72,7 @@ def handler(event=None, context=None):
             if path.endswith("/lookup"):
                 return handle_lookup(query_params)
             if resource_id:
-                return handle_get_one(resource_id)
+                return handle_get_one(resource_id, event)
             return handle_get_all(query_params, event)
         elif method == "PUT":
             if not resource_id:
@@ -214,11 +214,39 @@ def handle_get_all(params, event):
     return response(200, individuals)
 
 
-def handle_get_one(resource_id):
-    """Handle GET individual by ID."""
+def handle_get_one(resource_id, event):
+    """Handle GET individual by ID, enforcing RBAC and Hierarchy location masking."""
+    user = get_user_from_event(event)
+    if not user:
+        return response(401, {"error": "Unauthorized"})
+
     individual = get_individual_by_id(PG_CONFIG, resource_id)
     if not individual:
         return response(404, {"error": "Individual not found"})
+
+    # Evaluate relationship
+    is_self = individual.get("user_id") == user["user_id"]
+    role = user["role"]
+
+    # Enforce data masking
+    if not is_self and role not in ["admin", "hr"]:
+        in_hierarchy = False
+        
+        # Managers get full access if the target is in their downstream org
+        if role == "manager":
+            from db import is_in_managers_hierarchy
+            in_hierarchy = is_in_managers_hierarchy(PG_CONFIG, user["user_id"], resource_id)
+
+        # Apply masking if out of scope
+        if not in_hierarchy:
+            individual["email"] = "***"
+            individual["employee_id"] = "***"
+            individual["is_direct_staff"] = "***"
+            individual["is_active"] = "***"
+            individual["location"] = "***"
+            individual["location_lat"] = None
+            individual["location_lng"] = None
+
     return response(200, individual)
 
 

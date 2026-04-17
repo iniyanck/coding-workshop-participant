@@ -5,7 +5,7 @@ import { Typography, Box, Paper, useTheme, Button } from '@mui/material';
 import PersonPinCircleIcon from '@mui/icons-material/PersonPinCircle';
 import StarIcon from '@mui/icons-material/Star';
 
-const TeamMap = ({ individuals, teamInfo }) => {
+const TeamMap = ({ people, teamInfo }) => {
   const theme = useTheme();
   const [selectedPerson, setSelectedPerson] = useState(null);
   const mapRef = useRef(null);
@@ -24,15 +24,15 @@ const TeamMap = ({ individuals, teamInfo }) => {
     return { color: theme.palette.primary.main, icon: <PersonPinCircleIcon fontSize="large" sx={{ color: 'primary.main' }}/>, label: 'Direct Staff', rank: 1 };
   };
 
-  const mappableIndividuals = useMemo(() => {
-    return individuals.filter(p => p.location_lat != null && p.location_lng != null);
-  }, [individuals]);
+  const mappablePeople = useMemo(() => {
+    return people.filter(p => p.location_lat != null && p.location_lng != null);
+  }, [people]);
 
-  const griddedIndividuals = useMemo(() => {
+  const griddedPeople = useMemo(() => {
     const grouped = {};
     
     // Group people by exact coordinates
-    mappableIndividuals.forEach(p => {
+    mappablePeople.forEach(p => {
       const key = `${p.location_lat},${p.location_lng}`;
       if (!grouped[key]) grouped[key] = [];
       grouped[key].push(p);
@@ -60,15 +60,15 @@ const TeamMap = ({ individuals, teamInfo }) => {
     });
     
     return result;
-  }, [mappableIndividuals]);
+  }, [mappablePeople]);
 
   const viewState = useMemo(() => {
-    if (mappableIndividuals.length === 0) {
+    if (mappablePeople.length === 0) {
       return { longitude: 72.8777, latitude: 19.0760, zoom: 4 };
     }
     
     let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
-    mappableIndividuals.forEach(p => {
+    mappablePeople.forEach(p => {
        if (p.location_lng < minLng) minLng = p.location_lng;
        if (p.location_lng > maxLng) maxLng = p.location_lng;
        if (p.location_lat < minLat) minLat = p.location_lat;
@@ -84,9 +84,9 @@ const TeamMap = ({ individuals, teamInfo }) => {
        latitude: (minLat + maxLat) / 2,
        zoom: 3
     };
-  }, [mappableIndividuals]);
+  }, [mappablePeople]);
 
-  if (mappableIndividuals.length === 0) {
+  if (mappablePeople.length === 0) {
     return (
       <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 3, bgcolor: 'action.hover' }}>
         <Typography color="text.secondary">No location data available for this team yet. Use HRIS Console to push locations.</Typography>
@@ -98,12 +98,12 @@ const TeamMap = ({ individuals, teamInfo }) => {
     ? "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json"
     : "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
 
-  // Sort individuals so that higher-ranked people (leaders) render last, ensuring they appear on top.
-  const sortedGriddedIndividuals = useMemo(() => {
-    return [...griddedIndividuals].sort((a, b) => {
+  // Sort people so that higher-ranked ones (leaders) render last, ensuring they appear on top.
+  const sortedGriddedPeople = useMemo(() => {
+    return [...griddedPeople].sort((a, b) => {
       return getMarkerStyle(a).rank - getMarkerStyle(b).rank;
     });
-  }, [griddedIndividuals, teamInfo]);
+  }, [griddedPeople, teamInfo]);
 
   return (
     <Box sx={{ 
@@ -170,7 +170,7 @@ const TeamMap = ({ individuals, teamInfo }) => {
           </Button>
         </Box>
 
-        {sortedGriddedIndividuals.map(person => (
+        {sortedGriddedPeople.map(person => (
           <Marker 
             key={person.id} 
             longitude={person.location_lng} 

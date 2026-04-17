@@ -79,7 +79,7 @@ function AppContent() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<DashboardPage />} />
-          <Route path="individuals" element={<IndividualsPage />} />
+          <Route path="people" element={<IndividualsPage />} />
           <Route path="teams" element={<TeamsPage />} />
           <Route path="achievements" element={<AchievementsPage />} />
           <Route path="skills" element={<SkillsPage />} />

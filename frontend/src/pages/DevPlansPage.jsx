@@ -268,7 +268,7 @@ export default function DevPlansPage() {
             getOptionLabel={(option) => `${option.first_name} ${option.last_name}`}
             value={individuals.find(i => i.id === filterIndividual) || null}
             onChange={(e, newValue) => setFilterIndividual(newValue ? newValue.id : '')}
-            renderInput={(params) => <TextField {...params} label="Filter by Employee" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+            renderInput={(params) => <TextField {...params} label="Filter by Person" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
             sx={{ minWidth: 250 }}
           />
         </Box>
@@ -415,7 +415,7 @@ export default function DevPlansPage() {
             value={individuals.find(i => i.id === planForm.individual_id) || null}
             onChange={(e, newValue) => setPlanForm({ ...planForm, individual_id: newValue ? newValue.id : '' })}
             disabled={!!editingPlan}
-            renderInput={(params) => <TextField {...params} label="Employee *" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
+            renderInput={(params) => <TextField {...params} label="Person *" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />}
             sx={{ mb: 2 }}
           />
           <TextField fullWidth label="Plan Title *" value={planForm.title}

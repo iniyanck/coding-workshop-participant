@@ -153,10 +153,10 @@ export default function IndividualsPage() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <PeopleIcon sx={{ color: 'primary.main' }} /> Individuals
+            <PeopleIcon sx={{ color: 'primary.main' }} /> People
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Employee records synced from the HRIS system
+            Records synced from the HRIS system
           </Typography>
         </Box>
       </Box>
@@ -207,7 +207,7 @@ export default function IndividualsPage() {
                   {filtered.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} sx={{ textAlign: 'center', py: 6 }}>
-                        <Typography color="text.secondary">No individuals found</Typography>
+                        <Typography color="text.secondary">No people found</Typography>
                       </TableCell>
                     </TableRow>
                   ) : (

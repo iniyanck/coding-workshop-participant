@@ -251,9 +251,11 @@ def get_all_individuals(config, team_id=None, user=None):
         
         cur.execute(base_query, tuple(params))
         rows = cur.fetchall()
-        return [row_to_dict_full(row, role) for row in rows]
+        
+        # Inject the is_self check (user_id is index 5 in the row)
+        return [row_to_dict_full(row, role, is_self=(str(row[5]) == user_id)) for row in rows]
 
-def row_to_dict_full(row, role):
+def row_to_dict_full(row, role, is_self=False):
     """Convert a joined individual row to a dictionary, conditionally anonymizing based on role."""
     if not row:
         return None
@@ -264,25 +266,39 @@ def row_to_dict_full(row, role):
     d["team_name"] = row[14]
     d["designation"] = row[15]
     
-    if role == "employee":
+    # NEW: Mask locations for employees looking at other people's records
+    if role == "employee" and not is_self:
         d["email"] = "***"
         d["employee_id"] = "***"
         d["is_direct_staff"] = "***"
         d["is_active"] = "***"
+        d["location"] = "***"
+        d["location_lat"] = None
+        d["location_lng"] = None
         
     return d
 
 def get_individual_by_id(config, individual_id):
-    """Retrieve a single individual by ID."""
+    """Retrieve a single individual by ID with full data (location, etc.)."""
     conn = get_connection(config)
     with conn.cursor() as cur:
-        cur.execute(
-            """SELECT id, employee_id, email, first_name, last_name, user_id, team_id, is_direct_staff, is_active, created_at, updated_at
-               FROM individuals WHERE id = %s""",
-            (individual_id,),
-        )
+        query = """
+            SELECT i.id, i.employee_id, i.email, i.first_name, i.last_name, 
+                   i.user_id, i.team_id, i.is_direct_staff, i.is_active, 
+                   i.created_at, i.updated_at,
+                   COALESCE(i.location, u.location) as location, 
+                   COALESCE(i.location_lat, u.location_lat) as location_lat, 
+                   COALESCE(i.location_lng, u.location_lng) as location_lng,
+                   t.name as team_name, i.designation
+            FROM individuals i
+            LEFT JOIN users u ON i.user_id = u.id
+            LEFT JOIN teams t ON i.team_id = t.id
+            WHERE i.id = %s
+        """
+        cur.execute(query, (individual_id,))
         row = cur.fetchone()
-        return row_to_dict(row) if row else None
+        # Return full data, handle_get_one will mask it if needed
+        return row_to_dict_full(row, role="admin", is_self=True) if row else None
 
 def update_individual(config, individual_id, data):
     """Update an individual record."""
@@ -293,7 +309,8 @@ def update_individual(config, individual_id, data):
                SET employee_id = %s, email = %s, first_name = %s, last_name = %s, designation = %s, user_id = %s,
                    team_id = %s, is_direct_staff = %s, location = %s, location_lat = %s, location_lng = %s, updated_at = CURRENT_TIMESTAMP
                WHERE id = %s
-               RETURNING id, employee_id, email, first_name, last_name, user_id, team_id, is_direct_staff, is_active, created_at, updated_at""",
+               RETURNING id, employee_id, email, first_name, last_name, user_id, team_id, is_direct_staff, is_active, created_at, updated_at,
+                         location, location_lat, location_lng""",
             (
                 data["employee_id"],
                 data.get("email"),
@@ -310,7 +327,15 @@ def update_individual(config, individual_id, data):
             ),
         )
         row = cur.fetchone()
-        return row_to_dict(row) if row else None
+        # For update returning, we don't have the joins, so we construct the dict manually or adjust row_to_dict_full
+        # Let's just return what we have (basic dict + location)
+        if not row:
+            return None
+        d = row_to_dict(row[:11])
+        d["location"] = row[11]
+        d["location_lat"] = float(row[12]) if row[12] is not None else None
+        d["location_lng"] = float(row[13]) if row[13] is not None else None
+        return d
 
 def delete_individual(config, individual_id):
     """Soft delete an individual record."""

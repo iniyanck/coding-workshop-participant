@@ -327,7 +327,7 @@ export default function TeamsPage() {
             </DialogTitle>
             <DialogContent dividers sx={{ p: 0 }}>
               <TeamMap 
-                individuals={individuals.filter(i => i.team_id === selectedTeam.id)} 
+                people={individuals.filter(i => i.team_id === selectedTeam.id)} 
                 teamInfo={selectedTeam} 
               />
             </DialogContent>
